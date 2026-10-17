@@ -98,6 +98,8 @@ async function route(){
   if (/\/admin\/?$/.test(location.pathname) || location.hash === "#admin") loginSheet();
   if (/\/live\/?$/.test(location.pathname) || location.hash === "#live") setTimeout(() => $("#liveBox") && $("#liveBox").scrollIntoView({ behavior: "smooth" }), 400);
 }
+function handleHash(){ if (location.hash === "#live") goLive(); else if (location.hash === "#winners") goWinners(); }
+addEventListener("hashchange", handleHash);
 
 /* ---------------- guest home ---------------- */
 function viewHome(){
@@ -113,10 +115,11 @@ function viewHome(){
       <div><img src="assets/duo-front.jpg" alt="₹24,000 Duo Edition voucher"><p class="cap">Duo Edition · ₹24,000</p></div>
     </div>
     <p class="event">Sun 18 Oct 2026 · 6 PM · Halcyon Times Club · Kakinada</p>
+    <div id="winBox"></div>
     <div class="hero-cta">${open
       ? `<button class="btn" id="applyBtn">Apply for Lucky Draw</button>
          <p class="note">Free for event attendees · One entry per mobile number &amp; email · Takes 1 minute</p>`
-      : `<div class="panel" style="text-align:center"><h3>Applications are closed</h3><p class="muted">Thank you for the amazing response! Watch the draw live below.</p></div>`}
+      : st && st.event_closed ? "" : `<div class="panel" style="text-align:center"><h3>Applications are closed</h3><p class="muted">Thank you for the amazing response! Watch the draw live below.</p></div>`}
       <p class="note" style="margin-top:10px">Already applied? <a href="#" id="alreadyBtn">Log In</a> with your mobile number and Lucky Draw ID.</p>
     </div>
     <div class="rule" style="margin-top:28px">Live draw</div>
@@ -124,7 +127,7 @@ function viewHome(){
     <footer>Shaan Fitness · Your Trusted Health Partner · Kakinada<br>Prizes are fitness-service vouchers, not cash. Free to enter; winners are picked at random, live.</footer>`;
   $("#applyBtn") && ($("#applyBtn").onclick = chooseSheet);
   $("#alreadyBtn").onclick = (e) => { e.preventDefault(); loginSheet(); };
-  Live.mount($("#liveBox"));
+  paintWinBox(); Live.mount($("#liveBox"));
 }
 
 function chooseSheet(){
@@ -225,7 +228,9 @@ function successSheet(code, phone){
     <div class="idcard" style="margin-top:16px"><div class="lbl">Your Lucky Draw ID</div><div class="code">${esc(code)}</div><div class="nm">${esc(me.entry_name)}</div></div>
     <p class="lead" style="margin-top:14px">You're logged in on this phone. To log in on another phone, use <b>+91 ${esc(phone)}</b> and your Lucky Draw ID.</p>
     <p class="lead">We've emailed your ID too. When the draw starts, a pop-up will appear here — keep this page open at the event.</p>
+    <div id="alertBox2"></div>
     <div class="stack"><a class="btn wa" href="${waIdLink()}" target="_blank" rel="noopener">Save my ID on WhatsApp</a><button class="btn ghost" data-close>Done</button></div>`);
+  paintAlerts("#alertBox2");
 }
 
 /* ---------------- applicant home ---------------- */
@@ -239,10 +244,12 @@ function viewApplicant(){
       <div class="cap" style="margin-top:8px">${esc(P(me.category).title)} draw</div>
     </div>
     <div class="stack"><a class="btn wa" href="${waIdLink()}" target="_blank" rel="noopener">Save my ID on WhatsApp</a></div>
+    <div id="alertBox"></div>
+    <div id="winBox"></div>
     <div class="rule" style="margin-top:26px">Live draw</div>
     <div id="liveBox"></div>
     <footer>Only winners' names and Lucky Draw IDs are shown. Your phone number and email are never shown.<br>Shaan Fitness · Kakinada</footer>`;
-  Live.mount($("#liveBox"));
+  paintAlerts(); paintWinBox(); Live.mount($("#liveBox"));
 }
 
 /* ---------------- Ram: Shuffle → Draw ---------------- */
@@ -256,17 +263,21 @@ function viewRam(){
 }
 function nextStep(){
   if (!st) return { kind: "wait", text: "Connecting…" };
+  if (st.event_closed) return { kind: "closed" };
   if (st.phase === "spinning") return { kind: "draw", c: st.category };
   if (st.registration_open) return { kind: "wait", text: "Waiting for Sabir to close applications" };
-  if (st.phase === "revealed") return (doneCat("couple") && doneCat("single")) ? { kind: "done" } : { kind: "next" };
+  if (st.phase === "revealed") return (doneCat("couple") && doneCat("single")) ? { kind: "finish" } : { kind: "next" };
   if (!doneCat("couple")) return { kind: "shuffle", c: "couple" };
   if (!doneCat("single")) return { kind: "shuffle", c: "single" };
-  return { kind: "done" };
+  return { kind: "finish" };
 }
 function ctrlHTML(){
   const s = nextStep(), label = (c) => c === "couple" ? "Couples · ₹29,000" : "Singles Duo · ₹24,000";
   if (s.kind === "wait") return `<div class="step">Please wait</div><button class="btn huge shuffle" disabled>${esc(s.text)}</button>`;
   if (s.kind === "done") return `<div class="step">All draws complete · Alhamdulillah</div><button class="btn huge shuffle" disabled>✓ Both winners announced</button>`;
+  if (s.kind === "closed") return `<div class="step">Event closed · Alhamdulillah</div><button class="btn huge shuffle" disabled>✓ Event successful</button>`;
+  if ((s.kind === "next" || s.kind === "finish") && Live.landing) return `<div class="step">Drawing the chit…</div><button class="btn huge shuffle" disabled>Please wait</button>`;
+  if (s.kind === "finish") return `<div class="step">Both draws complete</div><button class="btn huge" data-act="finish">Event Successful ✓</button>`;
   if (s.kind === "next" && Live.landing) return `<div class="step">Drawing the chit…</div><button class="btn huge shuffle" disabled>Please wait</button>`;
   if (s.kind === "next") return `<div class="step">Winners are on everyone's screen</div><button class="btn huge" data-act="next">Next Draw →</button>`;
   if (s.kind === "shuffle") return `<div class="step">Step 1 of 2 · ${label(s.c)}</div><button class="btn huge shuffle" data-act="shuffle" data-c="${s.c}">Shuffle</button>`;
@@ -278,7 +289,13 @@ document.addEventListener("click", async (e) => {
   b.disabled = true;
   if (b.dataset.act === "shuffle") {
     const r = await DN.rpc("dn_shuffle", { p_pin: auth.token, p_category: b.dataset.c });
-    if (!r.ok) { toast(r.message); b.disabled = false; } else await pollState();
+    if (!r.ok) { toast(r.message); b.disabled = false; } else { DN.fn("dn-push", { pin: auth.token, kind: "live-" + b.dataset.c }); await pollState(); }
+  } else if (b.dataset.act === "finish") {
+    if (!confirm("Close the event now?\n\nThis locks applications and draws for good. Everyone gets a notification and an email with the winners.")) { b.disabled = false; return; }
+    const r = await DN.rpc("dn_close_event", { p_pin: auth.token });
+    if (!r.ok) { toast(r.message); b.disabled = false; return; }
+    DN.fn("dn-push", { pin: auth.token, kind: "closed" });
+    await pollState(); toast("Event closed. Alhamdulillah!");
   } else if (b.dataset.act === "next") {
     const r = await DN.rpc("dn_next_draw", { p_pin: auth.token });
     if (!r.ok) { toast(r.message); b.disabled = false; } else await pollState();
@@ -334,6 +351,8 @@ function viewAdmin(fromBack){
 function paintReg(){
   const el = $("#regPanel"); if (!el || !st) return;
   const people = st.couples * 2 + st.singles_male + st.singles_female;
+  if (st.event_closed) { el.innerHTML = `<div class="row" style="align-items:center"><h3 style="margin:0">Event</h3><span style="flex:none"><span class="pill gold">Closed ✓</span></span></div>
+    <p class="muted" style="margin-top:8px">Ram Krishna closed the event${st.closed_at ? " at " + esc(fmtTime(st.closed_at)) : ""}. Applications and draws are locked. <b style="color:var(--ivory)">${people}</b> people took part.</p>`; return; }
   el.innerHTML = `<div class="row" style="align-items:center"><h3 style="margin:0">Applications</h3><span style="flex:none">${st.registration_open ? '<span class="pill on">Open</span>' : '<span class="pill off">Closed</span>'}</span></div>
     <p class="muted" style="margin-top:8px"><b style="color:var(--ivory)">${people}</b> people · ${st.couples} couples · ${st.singles_male} single men · ${st.singles_female} single women</p>
     <div class="stack"><button class="btn ${st.registration_open ? "red" : "ghost"}" id="regBtn">${st.registration_open ? "Close applications (start draw time)" : "Re-open applications"}</button></div>`;
@@ -526,18 +545,48 @@ function rememberResult(s){
   m[s.category] = { winners: s.winners, draw_id: s.draw_id, at: Date.now() }; save(RES, m);
 }
 function allResults(){
-  if (st && Array.isArray(st.results) && st.results.length) return st.results;   // from the server, when available
+  if (st && Array.isArray(st.results)) return st.results;          // server copy — the source of truth
   const m = load(RES) || {}, out = [];
   ["couple", "single"].forEach(c => { const r = m[c]; if (r && Date.now() - r.at < 4 * 3600e3) out.push({ category: c, winners: r.winners }); });
   return out;
 }
-function resultsBoard(excludeCat){
+const fmtTime = (t) => { try { return new Date(t).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }); } catch (_) { return ""; } };
+function resultsBoard(excludeCat, title = "Winners announced"){
   const list = allResults().filter(r => r.category !== excludeCat);
   if (!list.length) return "";
-  return `<div class="board"><div class="rule" style="margin:22px 0 4px">Winners announced</div>${list.map(r => `
+  return `<div class="board"><div class="rule" style="margin:22px 0 4px">${title}</div>${list.map(r => `
     <div class="wcard" style="text-align:center;margin-top:10px"><div class="tag" style="font-size:11px;letter-spacing:.24em;color:var(--gold);text-transform:uppercase">${esc(P(r.category).title)}</div>
-      ${r.winners.map(w => `<div class="nm" style="margin-top:8px">${esc(w.name)}</div><div class="meta" style="letter-spacing:.14em;color:var(--gold2)">${esc(w.code)}</div>`).join("")}</div>`).join("")}</div>`;
+      ${r.winners.map(w => `<div class="nm" style="margin-top:8px">${esc(w.name)}</div><div class="meta" style="letter-spacing:.14em;color:var(--gold2)">${esc(w.code)}</div>`).join("")}
+      ${r.at ? `<div class="rec">Draw record · ${esc(fmtTime(r.at))} · from ${esc(r.pool_size)} entries<br>Random code ${esc(r.seed)}</div>
+        <button class="btn sm ghost" data-replay="${esc(r.category)}" style="margin:10px auto 0;width:auto">▶ Watch replay</button>` : ""}</div>`).join("")}</div>`;
 }
+function paintWinBox(){
+  const el = $("#winBox"); if (!el) return;
+  const html = resultsBoard(null, st && st.event_closed ? "🏆 Final winners · Proof of draw" : "🏆 Winners · Proof of draw");
+  el.innerHTML = st && st.event_closed ? `<div class="panel" style="text-align:center;margin-top:16px;border-color:var(--gold)"><h3>The lucky draw is closed</h3>
+    <p class="muted">Alhamdulillah — both draws are complete. Applications and draws are locked. Thank you for being part of it!</p></div>${html}` : html;
+}
+function goWinners(){
+  closeSheet();
+  if (role() === "owner") { if (tab !== "live") { tab = "live"; viewAdmin(); } setTimeout(() => $("#winList") && $("#winList").scrollIntoView({ behavior: "smooth" }), 200); return; }
+  if (!$("#winBox")) route();
+  setTimeout(() => { paintWinBox(); const w = $("#winBox"); if (w) w.scrollIntoView({ behavior: "smooth", block: "start" }); }, 250);
+}
+// replay of a recorded draw: same entries, same winners, same jar animation
+function replay(cat){
+  const r = allResults().find(x => x.category === cat); if (!r) return;
+  const Z = P(cat);
+  openSheet(`<h2>Replay · ${esc(Z.short)}</h2>
+    <p class="note" style="margin-top:4px">Recorded draw · ${esc(fmtTime(r.at))} · ${esc(r.pool_size)} entries · code ${esc(r.seed)}</p>
+    <div id="rpHost"></div><p class="note" id="rpTxt" style="color:var(--gold2);font-size:14px">Shuffling ${esc(r.pool_size)} chits…</p><div id="rpOut"></div>
+    <p class="note">This replays the recorded draw with the same entries and winner. The winner was picked by the system at the moment Ram Krishna pressed Draw.</p>`);
+  const jar = new Jar($("#rpHost"), Math.max(12, Math.min(26, r.pool_size || 20)));
+  setTimeout(() => jar.shuffle(), 300);
+  setTimeout(() => { const t = $("#rpTxt"); if (t) t.textContent = "Drawing the winning chit…";
+    jar.draw(r.winners, () => { const o = $("#rpOut"); if (!o) return; if ($("#rpTxt")) $("#rpTxt").textContent = "Winner";
+      o.innerHTML = r.winners.map(w => `<div class="reel win" style="margin-top:10px"><div class="nm">${esc(w.name)}</div><div class="cd">${esc(w.code)}</div></div>`).join(""); }); }, 4300);
+}
+document.addEventListener("click", (e) => { const b = e.target.closest("[data-replay]"); if (b) replay(b.dataset.replay); });
 
 /* ---------------- live draw engine (shared) ---------------- */
 const Live = {
@@ -601,8 +650,17 @@ const Live = {
     this.jarCat = c;
     this.el.insertAdjacentHTML("beforeend", resultsBoard(c));
   },
+  closed(s){
+    const k = "closed" + JSON.stringify(allResults());
+    if (this.mode === "closed" && this.key === k) return;
+    this.mode = "closed"; this.key = k; this.jar = null;
+    this.el.innerHTML = `<div class="panel" style="text-align:center;border-color:var(--gold)">${ORNAMENT}
+      <h3 style="margin-top:10px">Event successfully closed</h3>
+      <p class="muted">Alhamdulillah. Both draws are complete — applications and draws are now locked.</p></div>${$("#winBox") ? "" : resultsBoard(null, "Final winners")}`;
+  },
   update(s){
     if (!this.alive()) return;
+    if (s.event_closed && s.phase !== "spinning" && !this.landing) return this.closed(s);
     if (s.phase === "spinning") { if (this.mode !== "spinning") this.spin(s); return; }
     if (s.phase === "revealed") { if (this.landing) return;
       if (this.mode === "spinning") return this.land(s);
@@ -629,6 +687,41 @@ function confetti(){
     if (++f < 320) requestAnimationFrame(tick); else x.clearRect(0, 0, c.width, c.height); })();
 }
 
+/* ---------------- draw alerts (web push) ---------------- */
+const VAPID = "BOSjA_51V50C5zMVfSqaGGPvMO_HKAFEW3T9du82CFA5PbXw622QsyGd3XcuBrdBCXI1qb8Rdf1-zJBl16-pSGc";
+const pushOK = () => "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+const isIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent);
+const standalone = () => window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+function b64ToBytes(b){ const p = "=".repeat((4 - b.length % 4) % 4), s = atob((b + p).replace(/-/g, "+").replace(/_/g, "/")); return Uint8Array.from([...s].map(c => c.charCodeAt(0))); }
+function alertsHTML(){
+  if (pushOK() && Notification.permission === "granted" && load("dn26_push")) return `<div class="alert-on">🔔 Draw alerts are on — we'll notify this phone when the draw goes live.</div>`;
+  if (isIOS() && !standalone()) return `<div class="panel alertp"><b>🔔 Want a notification when the draw goes live?</b>
+    <p class="muted" style="margin-top:6px">On iPhone: tap <b>Share</b> <span style="font-size:15px">⬆︎</span> → <b>Add to Home Screen</b>, open the lucky draw from your home screen, log in, then tap “Turn on draw alerts”.</p></div>`;
+  if (!pushOK()) return "";
+  if (Notification.permission === "denied") return `<div class="panel alertp"><p class="muted">🔕 Notifications are blocked for this site in your browser settings. You'll still see a pop-up here when the draw starts.</p></div>`;
+  return `<button class="btn ghost" data-alerts style="margin-top:10px">🔔 Turn on draw alerts</button>`;
+}
+function paintAlerts(sel = "#alertBox"){ const el = $(sel); if (el) el.innerHTML = alertsHTML(); }
+async function enableAlerts(){
+  try {
+    const reg = await navigator.serviceWorker.register("sw.js");
+    const perm = await Notification.requestPermission();
+    if (perm !== "granted") { toast("Notifications not allowed. You'll still get the pop-up here."); paintAlerts(); paintAlerts("#alertBox2"); return; }
+    await navigator.serviceWorker.ready;
+    const sub = (await reg.pushManager.getSubscription()) || (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToBytes(VAPID) }));
+    const r = await DN.rpc("dn_push_save", { p_sub: sub.toJSON(), p_token: auth ? auth.token : "" });
+    if (r && r.ok) { save("dn26_push", 1); toast("Draw alerts are on! 🔔"); } else toast("Couldn't turn on alerts. Please try again.");
+  } catch (e) { toast("This browser can't show notifications. You'll still get the pop-up here."); }
+  paintAlerts(); paintAlerts("#alertBox2");
+}
+async function refreshAlerts(){   // keep this phone's subscription saved
+  try { if (!pushOK() || Notification.permission !== "granted") return;
+    const reg = await navigator.serviceWorker.register("sw.js"); await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.getSubscription(); if (sub) { await DN.rpc("dn_push_save", { p_sub: sub.toJSON(), p_token: auth ? auth.token : "" }); save("dn26_push", 1); paintAlerts(); }
+  } catch (_) {}
+}
+document.addEventListener("click", (e) => { if (e.target.closest("[data-alerts]")) enableAlerts(); });
+
 /* ---------------- keep screen awake ---------------- */
 let wake = null;
 async function keepAwake(){ try { if ("wakeLock" in navigator && document.visibilityState === "visible" && !wake) { wake = await navigator.wakeLock.request("screen"); wake.addEventListener("release", () => wake = null); } } catch (_) {} }
@@ -647,7 +740,7 @@ $("#livebar").onclick = goLive;
 function paintLivebar(){
   const on = st && (st.phase === "spinning" || (st.phase === "revealed" && role() !== "drawer")) && !liveVisible();
   $("#livebar").classList.toggle("on", !!on);
-  if (st) $("#livebarTxt").textContent = st.phase === "spinning" ? "THE DRAW IS LIVE NOW · TAP TO WATCH" : "WINNERS ANNOUNCED · TAP TO SEE";
+  if (st) $("#livebarTxt").textContent = st.phase === "spinning" ? "THE DRAW IS LIVE NOW · TAP TO WATCH" : st.event_closed ? "EVENT CLOSED · SEE THE WINNERS" : "WINNERS ANNOUNCED · TAP TO SEE";
 }
 addEventListener("scroll", paintLivebar, { passive: true });
 
@@ -671,21 +764,36 @@ function onState(s){
     if (r === "owner" && !seen.has(s.draw_id)) setTimeout(() => winnerPopup(s.draw_id), prev ? 5600 : 300);
     if (r === "drawer") loadAdm().then(paintRamCtrl);
   }
+  const n0 = prev && Array.isArray(prev.results) ? prev.results.length : 0, n1 = Array.isArray(s.results) ? s.results.length : 0;
+  if (prev && n0 < 2 && n1 >= 2 && r !== "drawer") setTimeout(() => {
+    if (st.event_closed) return;
+    openSheet(`<h2>🏆 Both winners announced!</h2>${resultsBoard(null, "Winners")}
+      <div class="stack"><button class="btn" id="seeWinBtn">See both winners</button></div>`); const b = $("#seeWinBtn"); if (b) b.onclick = goWinners; }, 6500);
+  if (prev && !prev.event_closed && s.event_closed && r !== "drawer") {
+    openSheet(`<h2>The lucky draw is closed</h2><p class="lead">Alhamdulillah! Both draws are complete. See the winners and the proof of each draw.</p>
+      <div class="stack"><button class="btn" id="seeWinBtn">See winners &amp; proof</button></div>`); const b = $("#seeWinBtn"); if (b) b.onclick = goWinners;
+  }
+  if (!prev || JSON.stringify(prev.results) !== JSON.stringify(s.results) || prev.event_closed !== s.event_closed) paintWinBox();
   if (r === "owner") {
     paintReg();
-    const changed = prev && (prev.couples !== s.couples || prev.singles_male !== s.singles_male || prev.singles_female !== s.singles_female || prev.phase !== s.phase);
+    const changed = prev && (prev.couples !== s.couples || prev.singles_male !== s.singles_male || prev.singles_female !== s.singles_female || prev.phase !== s.phase || prev.event_closed !== s.event_closed || JSON.stringify(prev.results) !== JSON.stringify(s.results));
     if (changed) loadAdm().then(() => { if (tab === "people") paintPeople(); if (tab === "live") paintWinners(); });
   }
   paintRamCtrl();
   if (r === "guest" && prev && prev.registration_open !== s.registration_open && $("#applyBtn, .hero-cta")) viewHome();
 }
+// what counts as "changed": the content, not just the timestamp (two updates can share one timestamp)
+const sig = (r) => [r.updated_at, r.phase, r.draw_id, r.category, r.event_closed, r.registration_open, r.couples, r.singles_male, r.singles_female,
+  JSON.stringify(r.winners || []), (r.results || []).map(x => x.id).join(",")].join("|");
 async function pollState(){
-  try { const r = await DN.rest("dn_state?id=eq.1&select=*"); if (r && r[0] && (!st || r[0].updated_at !== st.updated_at)) onState(r[0]); } catch (_) {}
+  try { const r = await DN.rest("dn_state?id=eq.1&select=*"); if (r && r[0] && (!st || sig(r[0]) !== sig(st))) onState(r[0]); } catch (_) {}
 }
 (async () => {
   await pollState();
   await route();
+  if (role() !== "guest") setTimeout(handleHash, 500);
+  if (role() === "applicant") refreshAlerts();
   setInterval(pollState, 4000);
   try { supabase.createClient(DN.SB_URL, DN.SB_KEY).channel("dn_state")
-    .on("postgres_changes", { event: "UPDATE", schema: "public", table: "dn_state" }, (p) => { if (!st || p.new.updated_at !== st.updated_at) onState(p.new); }).subscribe(); } catch (_) {}
+    .on("postgres_changes", { event: "UPDATE", schema: "public", table: "dn_state" }, (p) => { if (!st || sig(p.new) !== sig(st)) onState(p.new); }).subscribe(); } catch (_) {}
 })();

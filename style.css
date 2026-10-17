@@ -189,3 +189,8 @@ footer{padding-bottom:70px}
 .pw{position:relative}.pw input{padding-right:48px}
 .eye{position:absolute;right:6px;top:50%;transform:translateY(-50%);width:38px;height:38px;border:0;background:none;color:var(--gold2);cursor:pointer;display:grid;place-items:center;border-radius:8px}
 .board .nm{font-family:var(--display);color:var(--ivory);font-size:18px}
+
+.rec{font-size:11.5px;color:var(--mute);margin-top:10px;line-height:1.6;word-break:break-all}
+.alert-on{margin-top:10px;font-size:13px;color:#7fe0a0;text-align:center}
+.alertp{margin-top:12px;font-size:14px;line-height:1.5}
+.pill.gold{background:#5a4512;color:var(--gold2)}
