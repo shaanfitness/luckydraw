@@ -184,3 +184,8 @@ footer{padding-bottom:70px}
 .paper-in b{font:600 18px/1.2 var(--display);color:#2a1f08}
 .paper-in span{font:700 13px var(--sans);letter-spacing:.14em;color:#8a6f2e;margin-top:4px}
 @keyframes fadein{from{opacity:0}}
+
+/* password eye */
+.pw{position:relative}.pw input{padding-right:48px}
+.eye{position:absolute;right:6px;top:50%;transform:translateY(-50%);width:38px;height:38px;border:0;background:none;color:var(--gold2);cursor:pointer;display:grid;place-items:center;border-radius:8px}
+.board .nm{font-family:var(--display);color:var(--ivory);font-size:18px}

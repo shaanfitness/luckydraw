@@ -5,6 +5,8 @@ const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const app = $("#app"), esc = DN.esc;
 const AUTH = "dn26_auth";
 const GOALS = ["Fat Loss","Weight Loss","Weight Gain","Muscle Gain","Strength","General Fitness","PCOS / PCOD","Thyroid","Diabetes","Others"];
+const EYE = `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg>`;
+const EYE_OFF = `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.9 17.9A10 10 0 0 1 12 19C5 19 1 12 1 12a18 18 0 0 1 5-5.9M9.9 5.2A9 9 0 0 1 12 5c7 0 11 7 11 7a18 18 0 0 1-2.2 3.2M14.1 14.1a3 3 0 1 1-4.2-4.2"/><path d="M1 1l22 22"/></svg>`;
 const ORNAMENT = `<svg class="ornament" viewBox="0 0 100 100" aria-hidden="true"><g fill="none" stroke="#c9a54e" stroke-width="2">
   ${[0,22.5,45,67.5,90,112.5,135,157.5].map(a => `<ellipse cx="50" cy="50" rx="10" ry="38" transform="rotate(${a} 50 50)"/>`).join("")}
   <circle cx="50" cy="50" r="9" fill="#c9a54e"/></g></svg>`;
@@ -21,9 +23,25 @@ function toast(t){ const el = $("#toast"); el.textContent = t; el.classList.add(
 /* ---------------- pop-up sheet ---------------- */
 function openSheet(html, { dismissable = true } = {}){
   $("#sheet").innerHTML = (dismissable ? `<button class="x" data-close aria-label="Close">×</button>` : "") + html;
+  if (!$("#modal").classList.contains("on") && !(history.state && history.state.sheet)) history.pushState({ ...(history.state || {}), sheet: 1 }, "");
   $("#modal").classList.add("on"); document.body.style.overflow = "hidden";
 }
-function closeSheet(){ $("#modal").classList.remove("on"); document.body.style.overflow = ""; }
+function closeSheet(how){   // how: undefined = normal close, "back" = phone back button, "replace" = turn the pop-up's history entry into the next screen
+  if (!$("#modal").classList.contains("on")) return;
+  $("#modal").classList.remove("on"); document.body.style.overflow = "";
+  if (how === "back") return;
+  if (how === "replace") { history.replaceState({ form: 1 }, ""); return; }
+  if (history.state && history.state.sheet) { ignorePop = true; history.back(); }
+}
+let ignorePop = false;
+addEventListener("popstate", (e) => {
+  if (ignorePop) { ignorePop = false; return; }
+  if ($("#modal").classList.contains("on")) { closeSheet("back"); return; }
+  const h = e.state || {};
+  if (role() === "owner" && h.tab && h.tab !== tab) { tab = h.tab; viewAdmin(true); return; }
+  if (role() === "owner" && !h.tab && tab !== "live") { tab = "live"; viewAdmin(true); return; }
+  if ($("#f") && !h.form) { role() === "guest" ? viewHome() : route(); return; }
+});
 $("#modal").addEventListener("click", (e) => { if (e.target.id === "modal" || e.target.closest("[data-close]")) closeSheet(); });
 
 /* ---------------- top bar ---------------- */
@@ -43,11 +61,13 @@ function loginSheet(){
       <label class="f" for="lm">Mobile number</label>
       <div class="phone"><span>+91</span><input type="tel" id="lm" inputmode="numeric" maxlength="14" autocomplete="username" placeholder="10-digit number"></div>
       <label class="f" for="lp">Lucky Draw ID / Password</label>
-      <input type="password" id="lp" autocomplete="current-password" placeholder="DN26-…">
+      <div class="pw"><input type="password" id="lp" autocomplete="current-password" placeholder="DN26-…"><button type="button" class="eye" id="eyeBtn" aria-label="Show password">${EYE}</button></div>
       <p class="err" id="lerr"></p>
       <button class="btn" style="margin-top:14px">Log In</button>
     </form>`);
   $("#lm").focus();
+  $("#eyeBtn").onclick = () => { const i = $("#lp"), show = i.type === "password"; i.type = show ? "text" : "password";
+    $("#eyeBtn").innerHTML = show ? EYE_OFF : EYE; $("#eyeBtn").setAttribute("aria-label", show ? "Hide password" : "Show password"); };
   $("#lf").onsubmit = async (e) => {
     e.preventDefault(); $("#lerr").textContent = "";
     const b = $("#lf button"); b.disabled = true; b.textContent = "Checking…";
@@ -113,7 +133,7 @@ function chooseSheet(){
       <button class="opt" data-cat="couple"><span class="ic">♥</span><span><b>Couples</b><span>Apply together. One couple wins the Couple Edition.</span></span><span class="amt">₹29K</span></button>
       <button class="opt" data-cat="single"><span class="ic">★</span><span><b>Singles</b><span>One male &amp; one female are drawn together for the Duo Edition.</span></span><span class="amt">₹24K</span></button>
     </div>`);
-  $$("#sheet .opt").forEach(b => b.onclick = () => { cat = b.dataset.cat; closeSheet(); viewForm(); });
+  $$("#sheet .opt").forEach(b => b.onclick = () => { cat = b.dataset.cat; closeSheet("replace"); viewForm(); });
 }
 
 /* ---------------- application form ---------------- */
@@ -146,7 +166,8 @@ function viewForm(){
       <p class="note">Each mobile number and email can be used only once — in Couples or Singles, not both.</p>
     </form>`;
   window.scrollTo(0, 0);
-  $("#backBtn").onclick = () => viewHome();
+  if (!(history.state && history.state.form)) history.pushState({ form: 1 }, "");
+  $("#backBtn").onclick = () => history.back();
   $("#f").onsubmit = submitForm;
 }
 document.addEventListener("click", (e) => {
@@ -191,6 +212,7 @@ async function submitForm(e){
   if (!r.ok) { err.textContent = r.message || "Something went wrong. Please try again."; err.scrollIntoView({ block: "center" }); return; }
   // applicant is logged in automatically on this phone
   auth = { role: "applicant", name: r.name, token: `A|${body.phone}|${r.code}` }; save(AUTH, auth);
+  history.replaceState({}, "");
   await route();
   successSheet(r.code, body.phone);
 }
@@ -270,7 +292,7 @@ document.addEventListener("click", async (e) => {
 
 /* ---------------- Sabir: admin ---------------- */
 async function loadAdm(){ const r = await DN.rpc("dn_admin_entries", { p_pin: auth.token }); if (r && r.ok) adm = r; }
-function viewAdmin(){
+function viewAdmin(fromBack){
   app.innerHTML = `
     <div class="tabs" role="tablist">
       <button role="tab" data-tab="live" aria-selected="${tab === "live"}">Live</button>
@@ -278,7 +300,7 @@ function viewAdmin(){
       <button role="tab" data-tab="settings" aria-selected="${tab === "settings"}">Settings</button>
     </div>
     <div id="tabBody"></div>`;
-  $$(".tabs button").forEach(b => b.onclick = () => { tab = b.dataset.tab; viewAdmin(); });
+  $$(".tabs button").forEach(b => b.onclick = () => { if (b.dataset.tab === tab) return; tab = b.dataset.tab; history.pushState({ tab }, ""); viewAdmin(); });
   const body = $("#tabBody");
   if (tab === "live") {
     body.innerHTML = `
@@ -494,6 +516,29 @@ class Jar {
   }
 }
 
+/* ---------------- winners board (all finished draws) ---------------- */
+const RES = "dn26_results";
+function rememberResult(s){
+  // nothing has been drawn yet (fresh start or after a reset) -> forget any old winners on this phone
+  if (s.phase !== "revealed" && (s.category == null || s.category === "couple")) { save(RES, null); return; }
+  if (s.phase !== "revealed" || !s.draw_id || !s.winners || !s.winners.length) return;
+  const m = (s.category === "couple" ? {} : load(RES)) || {};
+  m[s.category] = { winners: s.winners, draw_id: s.draw_id, at: Date.now() }; save(RES, m);
+}
+function allResults(){
+  if (st && Array.isArray(st.results) && st.results.length) return st.results;   // from the server, when available
+  const m = load(RES) || {}, out = [];
+  ["couple", "single"].forEach(c => { const r = m[c]; if (r && Date.now() - r.at < 4 * 3600e3) out.push({ category: c, winners: r.winners }); });
+  return out;
+}
+function resultsBoard(excludeCat){
+  const list = allResults().filter(r => r.category !== excludeCat);
+  if (!list.length) return "";
+  return `<div class="board"><div class="rule" style="margin:22px 0 4px">Winners announced</div>${list.map(r => `
+    <div class="wcard" style="text-align:center;margin-top:10px"><div class="tag" style="font-size:11px;letter-spacing:.24em;color:var(--gold);text-transform:uppercase">${esc(P(r.category).title)}</div>
+      ${r.winners.map(w => `<div class="nm" style="margin-top:8px">${esc(w.name)}</div><div class="meta" style="letter-spacing:.14em;color:var(--gold2)">${esc(w.code)}</div>`).join("")}</div>`).join("")}</div>`;
+}
+
 /* ---------------- live draw engine (shared) ---------------- */
 const Live = {
   el: null, mode: "", landing: false, key: "", jar: null,
@@ -532,14 +577,14 @@ const Live = {
       if (mine && w.code === mine) { iWon = true; r.classList.add("me"); r.insertAdjacentHTML("beforeend", `<div class="youwon">★ THAT'S YOU! ★</div>`); } });
     const Z = P(s.category);
     this.el.insertAdjacentHTML("beforeend", `<div class="congr">Congratulations!</div><img class="prizeimg" src="${Z.img}" alt="${esc(Z.title)} voucher">
-      <p class="note">Winners: please come to the stage. The physical voucher handed over by the AuraPeak organiser is the only valid voucher.</p>`);
+      <p class="note">Winners: please come to the stage. The physical voucher handed over by the AuraPeak organiser is the only valid voucher.</p>${resultsBoard(s.category)}`);
     this.mode = "revealed"; this.key = s.draw_id;
     if (celebrate) { confetti(); setTimeout(paintRamCtrl, 2500); }
     if (celebrate && iWon) youWonSheet(s.category);
   },
   idle(s){
     const c = s.category || "couple";
-    const k = [s.registration_open, s.couples, s.singles_male, s.singles_female, c].join();
+    const k = [s.registration_open, s.couples, s.singles_male, s.singles_female, c, JSON.stringify(allResults())].join();
     if (this.mode === "idle" && this.key === k) return;
     this.mode = "idle"; this.key = k;
     if (s.registration_open) {
@@ -554,6 +599,7 @@ const Live = {
     const n = c === "couple" ? s.couples : s.singles_male + s.singles_female;
     this.jarScreen(c, `Next: ${c === "couple" ? "Couples" : "Singles Duo"} draw · waiting for the shuffle`, n);
     this.jarCat = c;
+    this.el.insertAdjacentHTML("beforeend", resultsBoard(c));
   },
   update(s){
     if (!this.alive()) return;
@@ -607,6 +653,7 @@ addEventListener("scroll", paintLivebar, { passive: true });
 
 function onState(s){
   const prev = st; st = s;
+  rememberResult(s);
   Live.update(s);
   paintLivebar();
   const r = role();
@@ -620,6 +667,7 @@ function onState(s){
   }
   // winners revealed
   if (s.phase === "revealed" && s.draw_id && (!prev || prev.draw_id !== s.draw_id)) {
+    if ($("#watchBtn")) closeSheet();   // the "draw has started" pop-up is no longer needed
     if (r === "owner" && !seen.has(s.draw_id)) setTimeout(() => winnerPopup(s.draw_id), prev ? 5600 : 300);
     if (r === "drawer") loadAdm().then(paintRamCtrl);
   }
