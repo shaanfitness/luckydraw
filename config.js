@@ -12,29 +12,36 @@ window.DN = {
       detail: "1 month Elite Personal Coaching for two + 3 months gym membership each" },
   },
 };
+const NO_NET = "No internet connection. Please check your network and try again.";
+// every request gives up after a while, so a weak venue network never leaves a button stuck
+function dnFetch(url, opts, ms){
+  const c = new AbortController(), t = setTimeout(() => c.abort(), ms);
+  return fetch(url, { ...opts, signal: c.signal, cache: "no-store" }).finally(() => clearTimeout(t));
+}
+const dnHeaders = (json) => ({ ...(json ? { "Content-Type": "application/json" } : {}), apikey: DN.SB_KEY, Authorization: "Bearer " + DN.SB_KEY });
 DN.rest = async (path) => {
-  const r = await fetch(DN.SB_URL + "/rest/v1/" + path, { headers: { apikey: DN.SB_KEY, Authorization: "Bearer " + DN.SB_KEY } });
+  const r = await dnFetch(DN.SB_URL + "/rest/v1/" + path, { headers: dnHeaders(false) }, 9000);
+  if (!r.ok) throw new Error("HTTP " + r.status);
   return r.json();
 };
 DN.fn = async (name, body) => {
-  try { return await DN._fn(name, body); } catch (_) { return { ok: false, message: "No internet connection. Please check your network and try again." }; }
+  try {
+    const r = await dnFetch(DN.SB_URL + "/functions/v1/" + name, { method: "POST", headers: dnHeaders(true), body: JSON.stringify(body) }, 25000);
+    const j = await r.json().catch(() => null);
+    return j || { ok: false, net: true, message: "Network error. Please try again." };
+  } catch (_) { return { ok: false, net: true, message: NO_NET }; }
 };
-DN._fn = async (name, body) => {
-  const r = await fetch(DN.SB_URL + "/functions/v1/" + name, { method: "POST",
-    headers: { "Content-Type": "application/json", apikey: DN.SB_KEY, Authorization: "Bearer " + DN.SB_KEY }, body: JSON.stringify(body) });
-  return r.json().catch(() => ({ ok: false, message: "Network error. Please try again." }));
-};
+// net: true means "couldn't reach the server" (not a real "no" from the server)
 DN.rpc = async (name, args) => {
   for (let attempt = 0; attempt < 2; attempt++) {
-    try { return await DN._rpc(name, args); } catch (_) { await new Promise(r => setTimeout(r, 800)); }
+    try {
+      const r = await dnFetch(DN.SB_URL + "/rest/v1/rpc/" + name, { method: "POST", headers: dnHeaders(true), body: JSON.stringify(args) }, 15000);
+      const j = await r.json().catch(() => null);
+      if (r.ok && j) return j;
+      if (r.status >= 500 || r.status === 429 || !j) throw new Error("HTTP " + r.status);
+      return { ok: false, message: (j && j.message) || "Request failed." };
+    } catch (_) { if (attempt === 0) await new Promise(r => setTimeout(r, 800)); }
   }
-  return { ok: false, message: "No internet connection. Please check your network and try again." };
-};
-DN._rpc = async (name, args) => {
-  const r = await fetch(DN.SB_URL + "/rest/v1/rpc/" + name, { method: "POST",
-    headers: { "Content-Type": "application/json", apikey: DN.SB_KEY, Authorization: "Bearer " + DN.SB_KEY }, body: JSON.stringify(args) });
-  const j = await r.json().catch(() => null);
-  if (!r.ok) return { ok: false, message: (j && j.message) || "Request failed." };
-  return j;
+  return { ok: false, net: true, message: NO_NET };
 };
 DN.esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));

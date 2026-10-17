@@ -29,6 +29,7 @@ function openSheet(html, { dismissable = true } = {}){
 function closeSheet(how){   // how: undefined = normal close, "back" = phone back button, "replace" = turn the pop-up's history entry into the next screen
   if (!$("#modal").classList.contains("on")) return;
   $("#modal").classList.remove("on"); document.body.style.overflow = "";
+  $("#sheet").innerHTML = "";   // stops anything still animating inside (e.g. a replay jar)
   if (how === "back") return;
   if (how === "replace") { history.replaceState({ form: 1 }, ""); return; }
   if (history.state && history.state.sheet) { ignorePop = true; history.back(); }
@@ -59,7 +60,7 @@ function loginSheet(){
     <p class="lead" style="margin-top:8px">Applicants: use your mobile number and your <b>Lucky Draw ID</b> (for example DN26-C012).</p>
     <form id="lf" style="margin-top:16px">
       <label class="f" for="lm">Mobile number</label>
-      <div class="phone"><span>+91</span><input type="tel" id="lm" inputmode="numeric" maxlength="14" autocomplete="username" placeholder="10-digit number"></div>
+      <div class="phone"><span>+91</span><input type="tel" id="lm" inputmode="numeric" maxlength="20" autocomplete="username" placeholder="10-digit number"></div>
       <label class="f" for="lp">Lucky Draw ID / Password</label>
       <div class="pw"><input type="password" id="lp" autocomplete="current-password" placeholder="DN26-…"><button type="button" class="eye" id="eyeBtn" aria-label="Show password">${EYE}</button></div>
       <p class="err" id="lerr"></p>
@@ -80,25 +81,44 @@ function loginSheet(){
 }
 
 /* ---------------- routing ---------------- */
+// Only a real "no" from the server logs someone out. A weak network never does — we keep going with what this phone already knows.
+function logout(msg){ auth = null; me = null; save(AUTH, null); save(ME, null); if (msg) toast(msg); return route(); }
+const ME = "dn26_me";
+function meFromToken(){   // fallback when offline: "A|phone|DN26-C001"
+  const code = (auth.token || "").split("|")[2] || "";
+  return { ok: true, code, category: /-C\d/i.test(code) ? "couple" : "single", name: auth.name, entry_name: auth.name, won: null };
+}
+async function refreshMe(tries = 0){
+  const m = await DN.rpc("dn_me", { p_token: auth && auth.token });
+  if (role() !== "applicant") return;
+  if (m && m.ok) { const wasWon = me && me.won; me = m; save(ME, m); if (!wasWon && m.won && $("#idcard")) viewApplicant(); return; }
+  if (m && m.net && tries < 20) setTimeout(() => refreshMe(tries + 1), 6000);
+  else if (m && !m.net) logout();
+}
 async function route(){
   paintAcct();
   const r = role();
   if (r === "applicant") {
     const m = await DN.rpc("dn_me", { p_token: auth.token });
-    if (!m || !m.ok) { auth = null; save(AUTH, null); return route(); }
-    me = m; return viewApplicant();
+    if (m && m.ok) { me = m; save(ME, m); }
+    else if (m && m.net) { me = load(ME) || meFromToken(); setTimeout(() => refreshMe(), 6000); }
+    else return logout();
+    return viewApplicant();
   }
   if (r === "owner" || r === "drawer") {
     const ok = await DN.rpc("dn_admin_login", { p_pin: auth.token });
-    if (!ok || !ok.ok) { auth = null; save(AUTH, null); toast("Please log in again."); return route(); }
+    if (!ok || (!ok.ok && !ok.net)) return logout("Please log in again.");
     await loadAdm();
+    if (ok.net) toast("Weak network — reconnecting…");
     return r === "owner" ? viewAdmin() : viewRam();
   }
   viewHome();
   if (/\/admin\/?$/.test(location.pathname) || location.hash === "#admin") loginSheet();
-  if (/\/live\/?$/.test(location.pathname) || location.hash === "#live") setTimeout(() => $("#liveBox") && $("#liveBox").scrollIntoView({ behavior: "smooth" }), 400);
 }
-function handleHash(){ if (location.hash === "#live") goLive(); else if (location.hash === "#winners") goWinners(); }
+function handleHash(){
+  if (location.hash === "#live" || /\/live\/?$/.test(location.pathname)) goLive();
+  else if (location.hash === "#winners") goWinners();
+}
 addEventListener("hashchange", handleHash);
 
 /* ---------------- guest home ---------------- */
@@ -147,7 +167,7 @@ function person(pre, heading){
   <label class="f">Gender</label>
   <div class="seg" data-seg="${pre}gender"><button type="button" data-v="male" aria-pressed="false">Male</button><button type="button" data-v="female" aria-pressed="false">Female</button></div>
   <label class="f" for="${pre}phone">WhatsApp / mobile number</label>
-  <div class="phone"><span>+91</span><input type="tel" id="${pre}phone" inputmode="numeric" maxlength="14" placeholder="10-digit number" autocomplete="${pre ? "off" : "tel-national"}"></div>
+  <div class="phone"><span>+91</span><input type="tel" id="${pre}phone" inputmode="numeric" maxlength="20" placeholder="10-digit number" autocomplete="${pre ? "off" : "tel-national"}"></div>
   <label class="f" for="${pre}email">Email</label>
   <input type="email" id="${pre}email" inputmode="email" maxlength="120" placeholder="you@example.com" autocomplete="${pre ? "off" : "email"}">
   <label class="f">Why do you want to train? <span style="opacity:.7">(choose any)</span></label>
@@ -172,6 +192,8 @@ function viewForm(){
   if (!(history.state && history.state.form)) history.pushState({ form: 1 }, "");
   $("#backBtn").onclick = () => history.back();
   $("#f").onsubmit = submitForm;
+  $("#f").addEventListener("input", () => { $("#err").textContent = ""; });   // an old error disappears as soon as they fix things
+  $("#f").addEventListener("click", (e) => { if (e.target.closest(".chip,.seg button,#consent")) $("#err").textContent = ""; });
 }
 document.addEventListener("click", (e) => {
   const b = e.target.closest(".seg button");
@@ -191,6 +213,9 @@ function collect(pre, who){
   if (!o.gender) throw `Please choose ${who} gender.`;
   if (!/^[6-9]\d{9}$/.test(o.phone)) throw `Please enter ${who} 10-digit mobile number.`;
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(o.email)) throw `Please enter ${who} email address.`;
+  const dom = o.email.split("@")[1], fix = { "gmail.con": "gmail.com", "gmail.co": "gmail.com", "gmail.cm": "gmail.com", "gmail.om": "gmail.com", "gmial.com": "gmail.com",
+    "gmai.com": "gmail.com", "gamil.com": "gmail.com", "gmal.com": "gmail.com", "gmail.in": "gmail.com", "yahoo.con": "yahoo.com", "yaho.com": "yahoo.com", "hotmail.con": "hotmail.com", "outlook.con": "outlook.com" }[dom];
+  if (fix) throw `Please check ${who} email — did you mean ${o.email.split("@")[0]}@${fix}?`;
   if (!goals.length) throw `Please choose at least one fitness goal for ${who === "your" ? "you" : "your partner"}.`;
   return o;
 }
@@ -215,6 +240,7 @@ async function submitForm(e){
   if (!r.ok) { err.textContent = r.message || "Something went wrong. Please try again."; err.scrollIntoView({ block: "center" }); return; }
   // applicant is logged in automatically on this phone
   auth = { role: "applicant", name: r.name, token: `A|${body.phone}|${r.code}` }; save(AUTH, auth);
+  me = { ok: true, code: r.code, category: r.category || cat, name: r.name, entry_name: r.name + (r.partner_name ? " & " + r.partner_name : ""), won: null }; save(ME, me);
   history.replaceState({}, "");
   await route();
   successSheet(r.code, body.phone);
@@ -239,7 +265,7 @@ function viewApplicant(){
   app.innerHTML = `
     ${won ? `<div class="wcard" style="text-align:center;border-color:#7fe0a0"><div class="youwon">YOU WON</div><div class="nm" style="margin-top:6px">${esc(P(won.category).title)}</div>
       <p class="muted" style="margin-top:6px">Congratulations! Please come to the stage. The physical voucher handed over by the AuraPeak organiser is the only valid voucher.</p></div>` : ""}
-    <div class="idcard" style="margin-top:12px">
+    <div class="idcard" id="idcard" style="margin-top:12px">
       <div class="lbl">Your Lucky Draw ID</div><div class="code">${esc(me.code)}</div><div class="nm">${esc(me.entry_name)}</div>
       <div class="cap" style="margin-top:8px">${esc(P(me.category).title)} draw</div>
     </div>
@@ -253,7 +279,8 @@ function viewApplicant(){
 }
 
 /* ---------------- Ram: Shuffle → Draw ---------------- */
-const doneCat = (c) => (adm.draws || []).some(d => d.category === c && d.status === "final");
+// a prize is done when the live state lists its winners (always fresh — also right after Sabir redraws a "not present" winner)
+const doneCat = (c) => (st && Array.isArray(st.results)) ? st.results.some(r => r.category === c) : (adm.draws || []).some(d => d.category === c && d.status === "final");
 function viewRam(){
   app.innerHTML = `
     <p class="sponsor" style="margin-top:4px">Draw control · Ram Krishna · AuraPeak</p>
@@ -285,23 +312,27 @@ function ctrlHTML(){
 }
 function paintRamCtrl(){ const c = $("#ctrl"); if (c) c.innerHTML = ctrlHTML(); }
 document.addEventListener("click", async (e) => {
-  const b = e.target.closest("[data-act]"); if (!b) return;
-  b.disabled = true;
-  if (b.dataset.act === "shuffle") {
-    const r = await DN.rpc("dn_shuffle", { p_pin: auth.token, p_category: b.dataset.c });
-    if (!r.ok) { toast(r.message); b.disabled = false; } else { DN.fn("dn-push", { pin: auth.token, kind: "live-" + b.dataset.c }); await pollState(); }
-  } else if (b.dataset.act === "finish") {
+  const b = e.target.closest("[data-act]"); if (!b || b.disabled) return;
+  b.disabled = true; const act = b.dataset.act, c = b.dataset.c;
+  // if the answer got lost on a weak network, check what actually happened before showing an error
+  const failed = async (r, happened) => { await pollState(); if (st && happened(st)) return; toast(r.message); paintRamCtrl(); };
+  if (act === "shuffle") {
+    const r = await DN.rpc("dn_shuffle", { p_pin: auth.token, p_category: c });
+    if (!r.ok) return failed(r, s => s.phase === "spinning");
+    DN.fn("dn-push", { pin: auth.token, kind: "live-" + c }); await pollState();
+  } else if (act === "finish") {
     if (!confirm("Close the event now?\n\nThis locks applications and draws for good. Everyone gets a notification and an email with the winners.")) { b.disabled = false; return; }
     const r = await DN.rpc("dn_close_event", { p_pin: auth.token });
-    if (!r.ok) { toast(r.message); b.disabled = false; return; }
+    if (!r.ok) return failed(r, s => s.event_closed);
     DN.fn("dn-push", { pin: auth.token, kind: "closed" });
     await pollState(); toast("Event closed. Alhamdulillah!");
-  } else if (b.dataset.act === "next") {
+  } else if (act === "next") {
     const r = await DN.rpc("dn_next_draw", { p_pin: auth.token });
-    if (!r.ok) { toast(r.message); b.disabled = false; } else await pollState();
-  } else if (b.dataset.act === "draw") {
+    if (!r.ok) return failed(r, s => s.phase === "idle");
+    await pollState();
+  } else if (act === "draw") {
     const r = await DN.rpc("dn_draw", { p_pin: auth.token });
-    if (!r.ok) { toast(r.message); b.disabled = false; return; }
+    if (!r.ok) return failed(r, s => s.phase === "revealed");
     DN.fn("dn-notify", { pin: auth.token, draw_id: r.draw_id });   // winners get their email automatically
     await loadAdm(); await pollState();
   }
@@ -449,8 +480,9 @@ function csv(){
   a.download = "dandiya-lucky-draw-applicants.csv"; a.click();
 }
 async function reset(scope){
-  if (!confirm(scope === "all" ? "GO LIVE?\n\nThis hides ALL current applicants and results (archived, not deleted) and re-opens applications for the real event." : "Reset the draw results? Applicants stay.")) return;
-  if (scope === "all" && prompt("Type GO LIVE to confirm") !== "GO LIVE") return;
+  if (!confirm(scope === "all" ? "GO LIVE?\n\nThis hides ALL current applicants and results (archived, not deleted) and re-opens applications for the real event." : "Reset the draw results?\n\nThe winners disappear from everyone's screen. Applicants stay.")) return;
+  const word = scope === "all" ? "GO LIVE" : "RESET";
+  if ((prompt(`Type ${word} to confirm`) || "").trim().toUpperCase() !== word) return toast("Cancelled — nothing was changed.");
   const r = await DN.rpc("dn_admin_reset", { p_pin: auth.token, p_scope: scope });
   if (!r.ok) return toast(r.message);
   await loadAdm(); await pollState(); toast(scope === "all" ? "Done — applications are open and everything is clean." : "Draw results cleared.");
@@ -472,8 +504,11 @@ class Jar {
       this.chits.push({ el, x: Math.cos(a) * d, y: Math.sin(a) * d, vx: 0, vy: 0, r: Math.random() * 360, vr: 0 });
     }
     for (let i = 0; i < 160; i++) this.step();   // settle into a pile before showing
-    this.paint();
-    const loop = () => { if (this.dead || !document.body.contains(this.wrap)) return; this.step(); this.paint(); requestAnimationFrame(loop); };
+    this.paint(); this.still = 0;
+    // once the pile has settled the jar "sleeps" (no work per frame) — smooth scrolling and less battery while people wait
+    const loop = () => { if (this.dead || !document.body.contains(this.wrap)) return;
+      if (this.mode !== "rest" || this.still++ < 150) { this.step(); this.paint(); }
+      requestAnimationFrame(loop); };
     requestAnimationFrame(loop);
   }
   step(){
@@ -506,7 +541,7 @@ class Jar {
   }
   paint(){ for (const c of this.chits) if (!c.gone) c.el.style.transform = `translate(${c.x.toFixed(1)}px,${c.y.toFixed(1)}px) rotate(${c.r.toFixed(0)}deg)`; }
   shuffle(){ this.mode = "shuffle"; this.chits.forEach(c => { c.or = null; c.th = Math.atan2(c.y, c.x); c.vy -= Math.random() * 10; }); }
-  rest(){ this.mode = "rest"; }
+  rest(){ this.mode = "rest"; this.still = 0; }
   // Draw: the chit(s) nearest the middle rise out of the jar with a glow and open to show the winner.
   draw(winners, done){
     this.mode = "slow";
@@ -591,7 +626,8 @@ document.addEventListener("click", (e) => { const b = e.target.closest("[data-re
 /* ---------------- live draw engine (shared) ---------------- */
 const Live = {
   el: null, mode: "", landing: false, key: "", jar: null,
-  mount(el){ this.el = el; this.mode = ""; this.key = ""; this.jar = null; this.landing = false; if (st) this.update(st); },
+  mount(el){ this.el = el; this.mode = ""; this.key = ""; this.jar = null; this.landing = false;
+    if (st) this.update(st); else el.innerHTML = `<div class="panel" style="text-align:center"><p class="muted">Connecting to the live draw…</p></div>`; },
   alive(){ return this.el && document.body.contains(this.el); },
   head(c){ const Z = P(c);
     return `<div class="livehead"><span class="livetag"><i></i>LIVE</span></div>
@@ -606,7 +642,8 @@ const Live = {
   },
   spin(s){
     this.mode = "spinning"; this.key = "";
-    const n = (s.pool || []).length, text = `Shuffling ${n} chits…`;
+    const n = Array.isArray(s.pool) && s.pool.length ? s.pool.length : (s.category === "couple" ? s.couples : s.singles_male + s.singles_female);
+    const text = `Shuffling ${n} chits…`;
     if (!this.jar || !document.body.contains(this.jar.wrap) || this.jarCat !== s.category) this.jarScreen(s.category, text, n);
     else $("#jarTxt", this.el).textContent = text;
     this.jarCat = s.category; this.jar.shuffle();
@@ -722,11 +759,18 @@ async function refreshAlerts(){   // keep this phone's subscription saved
 }
 document.addEventListener("click", (e) => { if (e.target.closest("[data-alerts]")) enableAlerts(); });
 
-/* ---------------- keep screen awake ---------------- */
+/* ---------------- keep screen awake (only while the draw is on) ---------------- */
 let wake = null;
-async function keepAwake(){ try { if ("wakeLock" in navigator && document.visibilityState === "visible" && !wake) { wake = await navigator.wakeLock.request("screen"); wake.addEventListener("release", () => wake = null); } } catch (_) {} }
+const drawTime = () => st && !st.registration_open && !st.event_closed;
+async function keepAwake(){
+  try {
+    if (!("wakeLock" in navigator)) return;
+    if (drawTime() && document.visibilityState === "visible" && !wake) { wake = await navigator.wakeLock.request("screen"); wake.addEventListener("release", () => wake = null); }
+    else if (!drawTime() && wake) { const w = wake; wake = null; await w.release(); }
+  } catch (_) {}
+}
 document.addEventListener("visibilitychange", keepAwake);
-document.addEventListener("click", keepAwake, { once: true });
+document.addEventListener("click", keepAwake);
 
 /* ---------------- state sync ---------------- */
 function liveVisible(){ const b = $("#liveBox"); if (!b) return false; const r = b.getBoundingClientRect(); return r.top < innerHeight - 120 && r.bottom > 80; }
@@ -767,8 +811,9 @@ function onState(s){
     if (r === "drawer") loadAdm().then(paintRamCtrl);
   }
   const n0 = prev && Array.isArray(prev.results) ? prev.results.length : 0, n1 = Array.isArray(s.results) ? s.results.length : 0;
-  if (prev && n0 < 2 && n1 >= 2 && r !== "drawer") setTimeout(() => {
-    if (st.event_closed) return;
+  // Sabir has his own winner pop-up; never cover a "You won" or winner pop-up that is already open
+  if (prev && n0 < 2 && n1 >= 2 && r !== "drawer" && r !== "owner") setTimeout(() => {
+    if (st.event_closed || $("#modal").classList.contains("on")) return;
     openSheet(`<h2>🏆 Both winners announced!</h2>${resultsBoard(null, "Winners")}
       <div class="stack"><button class="btn" id="seeWinBtn">See both winners</button></div>`); const b = $("#seeWinBtn"); if (b) b.onclick = goWinners; }, 6500);
   if (prev && !prev.event_closed && s.event_closed && r !== "drawer") {
@@ -782,20 +827,45 @@ function onState(s){
     if (changed) loadAdm().then(() => { if (tab === "people") paintPeople(); if (tab === "live") paintWinners(); });
   }
   paintRamCtrl();
+  keepAwake();
   if (r === "guest" && prev && prev.registration_open !== s.registration_open && $("#applyBtn, .hero-cta")) viewHome();
 }
 // what counts as "changed": the content, not just the timestamp (two updates can share one timestamp)
 const sig = (r) => [r.updated_at, r.phase, r.draw_id, r.category, r.event_closed, r.registration_open, r.couples, r.singles_male, r.singles_female,
   JSON.stringify(r.winners || []), (r.results || []).map(x => x.id).join(",")].join("|");
-async function pollState(){
-  try { const r = await DN.rest("dn_state?id=eq.1&select=*"); if (r && r[0] && (!st || sig(r[0]) !== sig(st))) onState(r[0]); } catch (_) {}
+// The live screen gets changes two ways: instantly through realtime, and by checking every few seconds as a safety net.
+// The check skips the big list of names (only realtime carries it) and never runs twice at once.
+const STATE_Q = "dn_state?id=eq.1&select=id,registration_open,phase,category,winners,draw_id,couples,singles_male,singles_female,updated_at,results,event_closed,closed_at,round";
+let pollP = null, pollAgain = false, lastPoll = 0, rtOn = false, rtWorks = false;
+function pollState(){
+  if (pollP) { pollAgain = true; return pollP; }
+  pollP = (async () => {
+    do {
+      pollAgain = false;
+      try { const r = await DN.rest(STATE_Q); lastPoll = Date.now(); if (Array.isArray(r) && r[0] && (!st || sig(r[0]) !== sig(st))) onState(r[0]); } catch (_) {}
+    } while (pollAgain);
+    pollP = null;
+  })();
+  return pollP;
 }
+function startRealtime(){
+  try {
+    if (!window.supabase || startRealtime.done) return; startRealtime.done = true;
+    supabase.createClient(DN.SB_URL, DN.SB_KEY).channel("dn_state")
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "dn_state" }, (p) => { rtWorks = true; if (p.new && (!st || sig(p.new) !== sig(st))) onState(p.new); })
+      .subscribe((status) => { rtOn = status === "SUBSCRIBED"; if (rtOn) pollState(); });
+  } catch (_) {}
+}
+window.__sbReady = startRealtime;
 (async () => {
   await pollState();
   await route();
-  if (role() !== "guest") setTimeout(handleHash, 500);
+  setTimeout(handleHash, 500);
   if (role() === "applicant") refreshAlerts();
-  setInterval(pollState, 4000);
-  try { supabase.createClient(DN.SB_URL, DN.SB_KEY).channel("dn_state")
-    .on("postgres_changes", { event: "UPDATE", schema: "public", table: "dn_state" }, (p) => { if (!st || sig(p.new) !== sig(st)) onState(p.new); }).subscribe(); } catch (_) {}
+  startRealtime();
+  // every 4 s; every 12 s once realtime has proven it works on this phone; paused while the screen is off
+  setInterval(() => { if (document.hidden) return; if (rtOn && rtWorks && Date.now() - lastPoll < 12000) return; pollState(); }, 4000);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) pollState(); });
+  addEventListener("online", () => pollState());
+  addEventListener("pageshow", (e) => { if (e.persisted) pollState(); });
 })();

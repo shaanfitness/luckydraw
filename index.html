@@ -10,7 +10,8 @@
 <meta property="og:image" content="https://shaanfitness.github.io/luckydraw/assets/og.jpg">
 <meta name="theme-color" content="#1e0508">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600&family=Cormorant+Garamond:wght@600;700&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+<!-- fonts load without holding up the page on a weak network -->
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600&family=Cormorant+Garamond:wght@600;700&family=Inter:wght@400;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
 <link rel="stylesheet" href="style.css">
 <link rel="icon" href="assets/sf-logo.png">
 <link rel="manifest" href="manifest.json">
@@ -23,11 +24,13 @@
 <body>
 <canvas id="cf"></canvas>
 
+<div class="stickyhead">
 <header class="topbar">
-  <a class="lk" href="./" aria-label="Home"><img class="sf" src="assets/sf-lockup.png" alt="Shaan Fitness"><span class="x">×</span><img class="ap" src="assets/aurapeak.jpg" alt="AuraPeak"></a>
+  <a class="lk" href="./" aria-label="Home"><img class="sf" src="assets/sf-lockup.png" width="90" height="40" alt="Shaan Fitness"><span class="x">×</span><img class="ap" src="assets/aurapeak.jpg" width="34" height="34" alt="AuraPeak"></a>
   <div id="acct"></div>
 </header>
 <div class="livebar" id="livebar"><i></i><span id="livebarTxt">THE DRAW IS LIVE NOW · TAP TO WATCH</span></div>
+</div>
 
 <main class="wrap" id="app"></main>
 
@@ -35,8 +38,9 @@
 <div class="modal" id="modal" role="dialog" aria-modal="true"><div class="sheet" id="sheet"></div></div>
 <div class="toast" id="toast"></div>
 
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script src="config.js"></script>
 <script src="app.js"></script>
+<!-- realtime library: loads in the background; the page already works without it -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js" async onload="window.__sbReady && window.__sbReady()"></script>
 </body>
 </html>
