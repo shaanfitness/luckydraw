@@ -736,13 +736,15 @@ function goLive(){
   if (!$("#liveBox")) route();
   setTimeout(() => $("#liveBox") && $("#liveBox").scrollIntoView({ behavior: "smooth", block: "start" }), 150);
 }
-$("#livebar").onclick = goLive;
+$("#livebar").onclick = () => (st && st.phase === "spinning") ? goLive() : goWinners();
 function paintLivebar(){
-  const on = st && (st.phase === "spinning" || (st.phase === "revealed" && role() !== "drawer")) && !liveVisible();
+  // stays on permanently once the draw has started, winners exist, or the event is closed (not on Ram's control screen)
+  const hasWinners = st && Array.isArray(st.results) && st.results.length > 0;
+  const on = st && role() !== "drawer" && (st.phase === "spinning" || st.phase === "revealed" || st.event_closed || hasWinners);
   $("#livebar").classList.toggle("on", !!on);
-  if (st) $("#livebarTxt").textContent = st.phase === "spinning" ? "THE DRAW IS LIVE NOW · TAP TO WATCH" : st.event_closed ? "EVENT CLOSED · SEE THE WINNERS" : "WINNERS ANNOUNCED · TAP TO SEE";
+  if (st) $("#livebarTxt").textContent = st.phase === "spinning" ? "THE DRAW IS LIVE NOW · TAP TO WATCH"
+    : st.event_closed ? "EVENT CLOSED · SEE THE WINNERS" : "WINNERS ANNOUNCED · SEE THE WINNERS";
 }
-addEventListener("scroll", paintLivebar, { passive: true });
 
 function onState(s){
   const prev = st; st = s;
