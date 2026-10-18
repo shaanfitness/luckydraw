@@ -5,6 +5,8 @@ window.DN = {
   SITE: "https://shaanfitness.github.io/luckydraw/",
   // Shaan Fitness WhatsApp number (entrants send their ID here; it stays in their chat as proof)
   SF_WHATSAPP: "919502318090",
+  // "manual" = chits drawn by hand from a bowl on stage, Sabir enters each winner's ID. "online" = Ram's Shuffle → Draw.
+  DRAW_MODE: "manual",
   PRIZE: {
     couple: { title: "₹29,000 Couple Edition", short: "Couple Edition", amt: "₹29,000", voucher: "SF-AP26-COUPLE-001", img: "assets/couple-front.jpg",
       detail: "1 month Elite Personal Coaching for the couple + 6 months gym membership each" },

@@ -18,6 +18,11 @@ function save(k, v){ try { v == null ? localStorage.removeItem(k) : localStorage
 const markSeen = (id) => { seen.add(id); save("dn26_seen", [...seen]); };
 const role = () => (auth && auth.role) || "guest";
 const P = (c) => DN.PRIZE[c];
+// MANUAL: chits are drawn by hand from a bowl on stage; Sabir types each winner's Lucky Draw ID and the site announces it.
+const MANUAL = DN.DRAW_MODE === "manual";
+// DISPLAY: …/luckydraw/display — a clean full-screen live board for the big screen / projector at the venue
+const DISPLAY = /\/display\/?$/.test(location.pathname) || location.hash === "#display";
+if (DISPLAY) document.body.classList.add("display");
 function toast(t){ const el = $("#toast"); el.textContent = t; el.classList.add("on"); clearTimeout(toast.t); toast.t = setTimeout(() => el.classList.remove("on"), 3200); }
 
 /* ---------------- pop-up sheet ---------------- */
@@ -96,6 +101,7 @@ async function refreshMe(tries = 0){
   else if (m && !m.net) logout();
 }
 async function route(){
+  if (DISPLAY) return viewDisplay();
   paintAcct();
   const r = role();
   if (r === "applicant") {
@@ -121,6 +127,16 @@ function handleHash(){
 }
 addEventListener("hashchange", handleHash);
 
+/* ---------------- big-screen display ---------------- */
+function viewDisplay(){
+  app.innerHTML = `<div class="dhead"><img class="sf" src="assets/sf-lockup.png" alt="Shaan Fitness"><span class="x">×</span><img class="ap" src="assets/aurapeak.jpg" alt="AuraPeak"></div>
+    <p class="sponsor">Shaan Fitness Lucky Draw · AuraPeak Dandiya Nights 2K26</p>
+    <div id="liveBox"></div>
+    <p class="note dtip" id="dtip">Tap anywhere for full screen</p>`;
+  Live.mount($("#liveBox"));
+  document.addEventListener("click", () => { try { document.documentElement.requestFullscreen && document.documentElement.requestFullscreen(); } catch (_) {} const t = $("#dtip"); if (t) t.remove(); }, { once: true });
+}
+
 /* ---------------- guest home ---------------- */
 function viewHome(){
   const open = !st || st.registration_open;
@@ -144,7 +160,7 @@ function viewHome(){
     </div>
     <div class="rule" style="margin-top:28px">Live draw</div>
     <div id="liveBox"></div>
-    <footer>Shaan Fitness · Your Trusted Health Partner · Kakinada<br>Prizes are fitness-service vouchers, not cash. Free to enter; winners are picked at random, live.</footer>`;
+    <footer>Shaan Fitness · Your Trusted Health Partner · Kakinada<br>Prizes are fitness-service vouchers, not cash. Free to enter; ${MANUAL ? "winners are drawn by hand from a bowl, live on stage." : "winners are picked at random, live."}</footer>`;
   $("#applyBtn") && ($("#applyBtn").onclick = chooseSheet);
   $("#alreadyBtn").onclick = (e) => { e.preventDefault(); loginSheet(); };
   paintWinBox(); Live.mount($("#liveBox"));
@@ -253,7 +269,7 @@ function successSheet(code, phone){
   openSheet(`<h2>Application successful! 🎉</h2>
     <div class="idcard" style="margin-top:16px"><div class="lbl">Your Lucky Draw ID</div><div class="code">${esc(code)}</div><div class="nm">${esc(me.entry_name)}</div></div>
     <p class="lead" style="margin-top:14px">You're logged in on this phone. To log in on another phone, use <b>+91 ${esc(phone)}</b> and your Lucky Draw ID.</p>
-    <p class="lead">We've emailed your ID too. When the draw starts, a pop-up will appear here — keep this page open at the event.</p>
+    <p class="lead">We've emailed your ID too. ${MANUAL ? "Winners are drawn by hand from a bowl on stage and appear here instantly" : "When the draw starts, a pop-up will appear here"} — keep this page open at the event.</p>
     <div id="alertBox2"></div>
     <div class="stack"><a class="btn wa" href="${waIdLink()}" target="_blank" rel="noopener">Save my ID on WhatsApp</a><button class="btn ghost" data-close>Done</button></div>`);
   paintAlerts("#alertBox2");
@@ -291,6 +307,10 @@ function viewRam(){
 function nextStep(){
   if (!st) return { kind: "wait", text: "Connecting…" };
   if (st.event_closed) return { kind: "closed" };
+  if (MANUAL) {
+    if (st.registration_open) return { kind: "wait", text: "Waiting for Sabir to close applications" };
+    return (doneCat("couple") && doneCat("single")) ? { kind: "finish" } : { kind: "manual" };
+  }
   if (st.phase === "spinning") return { kind: "draw", c: st.category };
   if (st.registration_open) return { kind: "wait", text: "Waiting for Sabir to close applications" };
   if (st.phase === "revealed") return (doneCat("couple") && doneCat("single")) ? { kind: "finish" } : { kind: "next" };
@@ -300,6 +320,7 @@ function nextStep(){
 }
 function ctrlHTML(){
   const s = nextStep(), label = (c) => c === "couple" ? "Couples · ₹29,000" : "Singles Duo · ₹24,000";
+  if (s.kind === "manual") return `<div class="step">Hand draw from the bowl · on stage</div><button class="btn huge shuffle" disabled>Sabir enters each winner</button>`;
   if (s.kind === "wait") return `<div class="step">Please wait</div><button class="btn huge shuffle" disabled>${esc(s.text)}</button>`;
   if (s.kind === "done") return `<div class="step">All draws complete · Alhamdulillah</div><button class="btn huge shuffle" disabled>✓ Both winners announced</button>`;
   if (s.kind === "closed") return `<div class="step">Event closed · Alhamdulillah</div><button class="btn huge shuffle" disabled>✓ Event successful</button>`;
@@ -353,6 +374,7 @@ function viewAdmin(fromBack){
   if (tab === "live") {
     body.innerHTML = `
       <div class="panel" id="regPanel"></div>
+      ${MANUAL ? '<div class="panel mpanel" id="manualPanel"></div>' : ""}
       <div id="liveBox" style="margin-top:6px"></div>
       <div class="panel" style="margin-top:16px"><h3>Winners</h3><div id="winList"></div></div>`;
     paintReg(); Live.mount($("#liveBox")); paintWinners();
@@ -367,7 +389,7 @@ function viewAdmin(fromBack){
     paintPeople(); $("#q").oninput = paintRows; $("#csvBtn").onclick = csv;
   } else {
     body.innerHTML = `
-      <div class="panel"><h3>Backup draw control</h3><p class="muted">Ram Krishna runs the draw from his phone. Use this only if his phone has a problem.</p><div id="ctrl" style="margin-top:12px"></div></div>
+      <div class="panel"><h3>${MANUAL ? "Event control" : "Backup draw control"}</h3><p class="muted">${MANUAL ? "Winners are entered on the Live tab. When both are announced, Ram (or you) presses Event Successful." : "Ram Krishna runs the draw from his phone. Use this only if his phone has a problem."}</p><div id="ctrl" style="margin-top:12px"></div></div>
       <div class="panel"><h3>Live screen</h3><div class="stack"><button class="btn ghost" id="clearBtn">Clear winners from everyone's screen</button></div></div>
       <div class="panel"><h3>Testing &amp; reset</h3><p class="muted">Nothing is ever deleted — old data is archived and hidden.</p>
         <div class="stack"><button class="btn ghost" id="resetDraws">Reset draw results only (keep applicants)</button>
@@ -379,7 +401,88 @@ function viewAdmin(fromBack){
     $("#resetAll").onclick = () => reset("all");
   }
 }
+/* ---------------- Sabir: enter winners drawn from the bowl ---------------- */
+const mState = { couple: null, single: null };   // a checked ID waiting for "Confirm & announce"
+function normId(v, c){
+  let x = String(v || "").toUpperCase().replace(/\s+/g, "");
+  if (/^\d{1,4}$/.test(x)) x = (c === "couple" ? "C" : "S") + x;     // "12" -> C012 / S012
+  const m = x.match(/([CS])-?0*(\d{1,4})$/);
+  return m ? `DN26-${m[1]}${m[2].padStart(3, "0")}` : x;
+}
+function previewPeople(c, ids){
+  if (ids.some(x => !x)) throw c === "couple" ? "Type the Lucky Draw ID written on the chit." : "Type both Lucky Draw IDs — the male and the female single.";
+  if (new Set(ids).size !== ids.length) throw "The same ID was typed twice.";
+  return ids.map((code, i) => {
+    const e = (adm.entries || []).find(x => x.code === code);
+    if (!e) throw `No applicant has the Lucky Draw ID ${code}. Please check the chit again.`;
+    if (e.category !== c) throw `${code} is a ${e.category === "couple" ? "Couples" : "Singles"} entry — it can't win the ${P(c).short}.`;
+    if (c === "single" && e.gender !== (i === 0 ? "male" : "female")) throw `${code} (${e.name}) is ${e.gender === "male" ? "male" : "female"} — put this ID in the ${e.gender === "male" ? "male" : "female"} box.`;
+    return { code, name: c === "couple" ? `${e.name} & ${e.partner_name}` : e.name, gender: c === "single" ? e.gender : "" };
+  });
+}
+function paintManual(){
+  const el = $("#manualPanel"); if (!el) return;
+  if (!st || st.event_closed) { el.classList.add("hide"); return; }
+  el.classList.remove("hide");
+  if (st.registration_open) { el.innerHTML = `<h3>Winners from the bowl</h3><p class="muted">Close applications first. Then draw the chits on stage and enter each winner's Lucky Draw ID here.</p>`; return; }
+  const keep = {}; $$(".idin", el).forEach(i => keep[i.id] = i.value);   // never lose what Sabir is typing
+  const res = (c) => (st.results || []).find(r => r.category === c);
+  const block = (c) => {
+    const Z = P(c), done = res(c), pv = mState[c];
+    if (done) return `<div class="mrow done"><div class="mtitle">✓ ${esc(Z.title)}</div>${done.winners.map(w => `<div class="mwin">${esc(w.name)} · <b>${esc(w.code)}</b></div>`).join("")}
+      <p class="mnote">Announced on every screen &amp; winner email sent. WhatsApp buttons are under Winners below.</p></div>`;
+    if (pv) return `<div class="mrow"><div class="mtitle">${esc(Z.title)} · does this match the chit?</div>
+      ${pv.people.map(x => `<div class="mprev"><div class="nm">${esc(x.name)}</div><div class="meta">${esc(x.code)}${x.gender ? " · " + (x.gender === "male" ? "Male" : "Female") : ""}</div></div>`).join("")}
+      <div class="stack"><button class="btn" data-mconfirm="${c}">Confirm &amp; announce on screen</button><button class="btn ghost" data-medit="${c}">No — change the ID</button></div>
+      <p class="mnote">Confirming shows the winner on every screen and emails them the voucher.</p></div>`;
+    const f = (id, ph, lbl) => `<label class="f" for="${id}">${lbl}</label><input type="text" id="${id}" class="idin" autocomplete="off" autocapitalize="characters" spellcheck="false" enterkeyhint="done" placeholder="${ph}">`;
+    return `<div class="mrow"><div class="mtitle">${esc(Z.title)}</div>
+      ${c === "couple" ? f("mid_couple", "DN26-C012 or just 12", "Couple's Lucky Draw ID (from the chit)")
+        : f("mid_male", "DN26-S004 or just 4", "Male single's Lucky Draw ID") + f("mid_female", "DN26-S009 or just 9", "Female single's Lucky Draw ID")}
+      <p class="err" id="merr_${c}"></p><button class="btn ghost" data-mcheck="${c}" style="margin-top:4px">Check name</button></div>`;
+  };
+  el.innerHTML = `<h3>Winners from the bowl</h3><p class="muted">Draw a chit on stage → type its Lucky Draw ID → check the name matches → confirm.</p>${block("couple")}${block("single")}
+    ${res("couple") && res("single") ? `<div class="stack"><button class="btn" data-act="finish">Event Successful ✓ (close the event)</button></div>` : ""}`;
+  Object.entries(keep).forEach(([id, v]) => { const i = $("#" + id); if (i) i.value = v; });
+}
+document.addEventListener("keydown", (e) => {   // Enter in an ID box = "Check name"
+  if (e.key !== "Enter" || !e.target.matches || !e.target.matches(".idin")) return;
+  e.preventDefault(); const b = e.target.closest(".mrow") && e.target.closest(".mrow").querySelector("[data-mcheck]"); if (b) b.click();
+});
+document.addEventListener("click", async (e) => {
+  const ck = e.target.closest("[data-mcheck]"), cf = e.target.closest("[data-mconfirm]"), ed = e.target.closest("[data-medit]");
+  if (ck) {
+    const c = ck.dataset.mcheck, err = $("#merr_" + c); err.textContent = "";
+    const ids = c === "couple" ? [normId($("#mid_couple").value, c)] : [normId($("#mid_male").value, c), normId($("#mid_female").value, c)];
+    ck.disabled = true; ck.textContent = "Checking…";
+    await loadAdm();                                   // always the latest list of applicants
+    try { mState[c] = { codes: ids, people: previewPeople(c, ids) }; paintManual(); }
+    catch (m) { const er = $("#merr_" + c); if (er) er.textContent = m; ck.disabled = false; ck.textContent = "Check name"; }
+    return;
+  }
+  if (ed) {
+    const c = ed.dataset.medit, pv = mState[c]; mState[c] = null; paintManual();
+    if (pv) { if (c === "couple") $("#mid_couple").value = pv.codes[0]; else { $("#mid_male").value = pv.codes[0]; $("#mid_female").value = pv.codes[1]; } }
+    return;
+  }
+  if (cf) {
+    const c = cf.dataset.mconfirm, pv = mState[c]; if (!pv || cf.disabled) return;
+    cf.disabled = true; cf.textContent = "Announcing…";
+    const r = await DN.rpc("dn_manual_draw", { p_pin: auth.token, p_category: c, p_codes: pv.codes });
+    if (!r.ok) {
+      await pollState();
+      if (doneCat(c)) { mState[c] = null; paintManual(); return; }   // it did go through — the answer just got lost
+      toast(r.message); cf.disabled = false; cf.textContent = "Confirm & announce on screen"; return;
+    }
+    mState[c] = null;
+    DN.fn("dn-notify", { pin: auth.token, draw_id: r.draw_id });   // winner email with their voucher
+    DN.fn("dn-push", { pin: auth.token, kind: "won-" + c });        // phone alert for people who turned alerts on
+    await loadAdm(); await pollState(); paintManual();
+  }
+});
+
 function paintReg(){
+  paintManual();
   const el = $("#regPanel"); if (!el || !st) return;
   const people = st.couples * 2 + st.singles_male + st.singles_female;
   if (st.event_closed) { el.innerHTML = `<div class="row" style="align-items:center"><h3 style="margin:0">Event</h3><span style="flex:none"><span class="pill gold">Closed ✓</span></span></div>
@@ -389,7 +492,7 @@ function paintReg(){
     <div class="stack"><button class="btn ${st.registration_open ? "red" : "ghost"}" id="regBtn">${st.registration_open ? "Close applications (start draw time)" : "Re-open applications"}</button></div>`;
   $("#regBtn").onclick = async () => {
     const open = !st.registration_open;
-    if (!open && !confirm(`Close applications now?\n\n${people} people have applied. Nobody can apply after this, and Ram's Shuffle button unlocks.`)) return;
+    if (!open && !confirm(`Close applications now?\n\n${people} people have applied. Nobody can apply after this${MANUAL ? ". Then enter each winner as the chits are drawn from the bowl." : ", and Ram's Shuffle button unlocks."}`)) return;
     const r = await DN.rpc("dn_admin_set_registration", { p_pin: auth.token, p_open: open }); if (!r.ok) toast(r.message); pollState();
   };
 }
@@ -418,7 +521,7 @@ function winnerBlock(d, withActions){
     ${people.map(x => `<div style="margin-top:12px"><div class="nm">${esc(x.n)}</div><div class="meta">${esc(x.code)} · +91 ${esc(x.p)}</div>
       ${withActions && d.status === "final" ? `<div class="row" style="margin-top:8px"><a class="btn wa sm" target="_blank" rel="noopener" href="${waWinner(d, x, people)}">Send on WhatsApp</a>
         <button class="btn sm ghost" data-share="${d.category}" data-name="${esc(x.n)}">Share voucher image</button></div>` : ""}</div>`).join("")}
-    ${withActions && d.status === "final" ? `<div class="row" style="margin-top:12px"><button class="btn sm red" data-void="${d.id}" style="flex:none">Winner not present – redraw</button></div>` : ""}</div>`;
+    ${withActions && d.status === "final" ? `<div class="row" style="margin-top:12px"><button class="btn sm red" data-void="${d.id}" style="flex:none">${MANUAL ? "Not present / wrong ID – enter again" : "Winner not present – redraw"}</button></div>` : ""}</div>`;
 }
 function paintWinners(){
   const el = $("#winList"); if (!el) return;
@@ -428,9 +531,10 @@ function paintWinners(){
 document.addEventListener("click", async (e) => {
   const s = e.target.closest("[data-share]"); if (s) { shareVoucher(s.dataset.share, s.dataset.name); return; }
   const v = e.target.closest("[data-void]"); if (!v) return;
-  if (!confirm("Winner not present?\n\nThis cancels this result. Ram can then Shuffle and Draw this prize again — the same winner won't be picked again.")) return;
+  if (!confirm(MANUAL ? "Not present or wrong ID?\n\nThis cancels this result and removes it from everyone's screen. Then draw the next chit and enter its ID.\n\n(Their winner email has already gone out — let them know personally.)"
+    : "Winner not present?\n\nThis cancels this result. Ram can then Shuffle and Draw this prize again — the same winner won't be picked again.")) return;
   const r = await DN.rpc("dn_admin_void_draw", { p_pin: auth.token, p_draw: v.dataset.void });
-  toast(r.ok ? "Cancelled. Ram can now Shuffle & Draw again." : r.message); closeSheet(); await loadAdm(); pollState(); if (role() === "owner") viewAdmin();
+  toast(r.ok ? (MANUAL ? "Cancelled. Enter the next chit's ID." : "Cancelled. Ram can now Shuffle & Draw again.") : r.message); closeSheet(); await loadAdm(); pollState(); if (role() === "owner") viewAdmin();
 });
 async function winnerPopup(drawId){
   await loadAdm();
@@ -592,12 +696,13 @@ function resultsBoard(excludeCat, title = "Winners announced"){
   return `<div class="board"><div class="rule" style="margin:22px 0 4px">${title}</div>${list.map(r => `
     <div class="wcard" style="text-align:center;margin-top:10px"><div class="tag" style="font-size:11px;letter-spacing:.24em;color:var(--gold);text-transform:uppercase">${esc(P(r.category).title)}</div>
       ${r.winners.map(w => `<div class="nm" style="margin-top:8px">${esc(w.name)}</div><div class="meta" style="letter-spacing:.14em;color:var(--gold2)">${esc(w.code)}</div>`).join("")}
-      ${r.at ? `<div class="rec">Draw record · ${esc(fmtTime(r.at))} · from ${esc(r.pool_size)} entries<br>Random code ${esc(r.seed)}</div>
+      ${r.at && r.seed === "manual" ? `<div class="rec">Drawn by hand from the bowl, live on stage · ${esc(fmtTime(r.at))} · ${esc(r.pool_size)} entries</div>`
+      : r.at ? `<div class="rec">Draw record · ${esc(fmtTime(r.at))} · from ${esc(r.pool_size)} entries<br>Random code ${esc(r.seed)}</div>
         <button class="btn sm ghost" data-replay="${esc(r.category)}" style="margin:10px auto 0;width:auto">▶ Watch replay</button>` : ""}</div>`).join("")}</div>`;
 }
 function paintWinBox(){
   const el = $("#winBox"); if (!el) return;
-  const html = resultsBoard(null, st && st.event_closed ? "🏆 Final winners · Proof of draw" : "🏆 Winners · Proof of draw");
+  const html = resultsBoard(null, st && st.event_closed ? (MANUAL ? "🏆 Final winners" : "🏆 Final winners · Proof of draw") : (MANUAL ? "🏆 Winners" : "🏆 Winners · Proof of draw"));
   el.innerHTML = st && st.event_closed ? `<div class="panel" style="text-align:center;margin-top:16px;border-color:var(--gold)"><h3>The lucky draw is closed</h3>
     <p class="muted">Alhamdulillah — both draws are complete. Applications and draws are locked. Thank you for being part of it!</p></div>${html}` : html;
 }
@@ -666,7 +771,10 @@ const Live = {
       <p class="note">Winners: please come to the stage. The physical voucher handed over by the AuraPeak organiser is the only valid voucher.</p>${resultsBoard(s.category)}`);
     this.mode = "revealed"; this.key = s.draw_id;
     if (celebrate) { confetti(); setTimeout(paintRamCtrl, 2500); }
-    if (celebrate && iWon) youWonSheet(s.category);
+    if (celebrate && iWon) { youWonSheet(s.category); popDraw = s.draw_id; $("#sheet h2") && $("#sheet h2").setAttribute("data-pop", ""); }
+    if (DISPLAY && celebrate) scrollTo({ top: 0, behavior: "smooth" });
+    // hand draw: tell people who are scrolled away from the live screen
+    if (celebrate && MANUAL && !iWon && !DISPLAY && role() !== "owner" && role() !== "drawer" && !liveVisible()) announceSheet(s);
   },
   idle(s){
     const c = s.category || "couple";
@@ -678,8 +786,17 @@ const Live = {
       this.el.innerHTML = `<div class="panel" style="text-align:center">
         <div class="livehead"><span class="livetag"><i></i>LIVE</span></div>
         <h3 style="margin-top:14px">Applications are open</h3>
-        <p class="muted">The draw happens live at the event. You'll get a pop-up here when it starts.</p>
+        <p class="muted">${MANUAL ? "The draw happens live on stage — chits are drawn by hand from a bowl. Winners appear here the moment they're announced." : "The draw happens live at the event. You'll get a pop-up here when it starts."}</p>
         <div class="stats3"><div class="stat"><b>${s.couples}</b><span>Couples</span></div><div class="stat"><b>${s.singles_male}</b><span>Single men</span></div><div class="stat"><b>${s.singles_female}</b><span>Single women</span></div></div></div>`;
+      return;
+    }
+    if (MANUAL) {
+      const done = allResults().map(r => r.category), left = ["couple", "single"].filter(x => !done.includes(x));
+      const head = left.length === 1 ? this.head(left[0]) : `<div class="livehead"><span class="livetag"><i></i>LIVE</span></div>
+        <h1 class="title" style="margin-top:12px">Lucky Draw · On Stage</h1><div class="big" style="font-size:clamp(44px,13vw,66px)">₹53,000</div><p class="sub">Two prizes · drawn by hand</p>`;
+      this.el.innerHTML = `${head}<div id="jarHost"></div><p class="note" id="jarTxt" style="font-size:15px;color:var(--gold2);margin-top:6px">Chits are drawn by hand from the bowl on stage.<br>The winner appears here the moment it's announced.</p>`;
+      this.jar = new Jar($("#jarHost", this.el), Math.max(12, Math.min(26, s.couples + s.singles_male + s.singles_female || 20)));
+      this.el.insertAdjacentHTML("beforeend", resultsBoard(null));
       return;
     }
     const n = c === "couple" ? s.couples : s.singles_male + s.singles_female;
@@ -701,11 +818,21 @@ const Live = {
     if (s.phase === "spinning") { if (this.mode !== "spinning") this.spin(s); return; }
     if (s.phase === "revealed") { if (this.landing) return;
       if (this.mode === "spinning") return this.land(s);
-      if (this.key !== s.draw_id) this.show(s, false); return; }
+      // a winner announced while this screen was already open gets the full celebration
+      if (this.key !== s.draw_id) this.show(s, this.mode === "idle" || this.mode === "revealed"); return; }
     if (this.landing) return;
     this.idle(s);
   },
 };
+let popDraw = null;   // the result an open "winner" / "You won" pop-up is about (closed again if Sabir cancels that result)
+function announceSheet(s){
+  const Z = P(s.category);
+  popDraw = s.draw_id;
+  openSheet(`<h2 data-pop>🏆 ${esc(Z.short)} winner${s.winners.length > 1 ? "s" : ""}!</h2>
+    <div class="wcard" style="text-align:center">${(s.winners || []).map(w => `<div class="nm" style="margin-top:6px">${esc(w.name)}</div><div class="meta" style="letter-spacing:.14em;color:var(--gold2)">${esc(w.code)}</div>`).join("")}</div>
+    <div class="stack"><button class="btn" id="seeLiveBtn">See it live</button></div>`);
+  const b = $("#seeLiveBtn"); if (b) b.onclick = goLive;
+}
 function youWonSheet(c){
   openSheet(`<h2>🎉 Congratulations!</h2><div class="youwon" style="text-align:center">YOU WON THE ${esc(P(c).title.toUpperCase())}</div>
     <img class="prizeimg" src="${P(c).img}" alt="">
@@ -731,11 +858,11 @@ const isIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent);
 const standalone = () => window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
 function b64ToBytes(b){ const p = "=".repeat((4 - b.length % 4) % 4), s = atob((b + p).replace(/-/g, "+").replace(/_/g, "/")); return Uint8Array.from([...s].map(c => c.charCodeAt(0))); }
 function alertsHTML(){
-  if (pushOK() && Notification.permission === "granted" && load("dn26_push")) return `<div class="alert-on">🔔 Draw alerts are on — we'll notify this phone when the draw goes live.</div>`;
-  if (isIOS() && !standalone()) return `<div class="panel alertp"><b>🔔 Want a notification when the draw goes live?</b>
+  if (pushOK() && Notification.permission === "granted" && load("dn26_push")) return `<div class="alert-on">🔔 Draw alerts are on — we'll notify this phone when ${MANUAL ? "the winners are announced" : "the draw goes live"}.</div>`;
+  if (isIOS() && !standalone()) return `<div class="panel alertp"><b>🔔 Want a notification when ${MANUAL ? "the winners are announced" : "the draw goes live"}?</b>
     <p class="muted" style="margin-top:6px">On iPhone: tap <b>Share</b> <span style="font-size:15px">⬆︎</span> → <b>Add to Home Screen</b>, open the lucky draw from your home screen, log in, then tap “Turn on draw alerts”.</p></div>`;
   if (!pushOK()) return "";
-  if (Notification.permission === "denied") return `<div class="panel alertp"><p class="muted">🔕 Notifications are blocked for this site in your browser settings. You'll still see a pop-up here when the draw starts.</p></div>`;
+  if (Notification.permission === "denied") return `<div class="panel alertp"><p class="muted">🔕 Notifications are blocked for this site in your browser settings. You'll still see a pop-up here when ${MANUAL ? "a winner is announced" : "the draw starts"}.</p></div>`;
   return `<button class="btn ghost" data-alerts style="margin-top:10px">🔔 Turn on draw alerts</button>`;
 }
 function paintAlerts(sel = "#alertBox"){ const el = $(sel); if (el) el.innerHTML = alertsHTML(); }
@@ -761,7 +888,7 @@ document.addEventListener("click", (e) => { if (e.target.closest("[data-alerts]"
 
 /* ---------------- keep screen awake (only while the draw is on) ---------------- */
 let wake = null;
-const drawTime = () => st && !st.registration_open && !st.event_closed;
+const drawTime = () => DISPLAY || (st && !st.registration_open && !st.event_closed);
 async function keepAwake(){
   try {
     if (!("wakeLock" in navigator)) return;
@@ -793,11 +920,17 @@ function paintLivebar(){
 function onState(s){
   const prev = st; st = s;
   rememberResult(s);
+  // a result Sabir cancelled ("not present / wrong ID"): close its pop-up so nobody keeps seeing a cancelled winner
+  if (popDraw && Array.isArray(s.results) && !s.results.some(x => x.id === popDraw)) {
+    if ($("#sheet [data-pop]")) closeSheet();
+    if (me && me.won && !(s.results || []).some(x => x.category === me.won.category && (x.winners || []).some(w => w.code === me.code))) me.won = null;
+    popDraw = null;
+  }
   Live.update(s);
   paintLivebar();
   const r = role();
   // draw just started → pop-up for everyone except Ram
-  if (s.phase === "spinning" && (!prev || prev.phase !== "spinning") && r !== "drawer" && prev) {
+  if (s.phase === "spinning" && (!prev || prev.phase !== "spinning") && r !== "drawer" && prev && !DISPLAY) {
     openSheet(`<div class="livehead"><span class="livetag"><i></i>LIVE</span></div>
       <h2 style="margin-top:12px">The ${s.category === "couple" ? "Couples" : "Singles Duo"} draw has started!</h2>
       <p class="lead">Watch the names being shuffled live, right now.</p>
@@ -807,18 +940,18 @@ function onState(s){
   // winners revealed
   if (s.phase === "revealed" && s.draw_id && (!prev || prev.draw_id !== s.draw_id)) {
     if ($("#watchBtn")) closeSheet();   // the "draw has started" pop-up is no longer needed
-    if (r === "owner" && !seen.has(s.draw_id)) setTimeout(() => winnerPopup(s.draw_id), prev ? 5600 : 300);
+    if (r === "owner" && !seen.has(s.draw_id)) setTimeout(() => winnerPopup(s.draw_id), prev ? (MANUAL ? 2200 : 5600) : 300);
     if (r === "drawer") loadAdm().then(paintRamCtrl);
   }
   const n0 = prev && Array.isArray(prev.results) ? prev.results.length : 0, n1 = Array.isArray(s.results) ? s.results.length : 0;
   // Sabir has his own winner pop-up; never cover a "You won" or winner pop-up that is already open
-  if (prev && n0 < 2 && n1 >= 2 && r !== "drawer" && r !== "owner") setTimeout(() => {
+  if (prev && n0 < 2 && n1 >= 2 && r !== "drawer" && r !== "owner" && !DISPLAY) setTimeout(() => {
     if (st.event_closed || $("#modal").classList.contains("on")) return;
     openSheet(`<h2>🏆 Both winners announced!</h2>${resultsBoard(null, "Winners")}
       <div class="stack"><button class="btn" id="seeWinBtn">See both winners</button></div>`); const b = $("#seeWinBtn"); if (b) b.onclick = goWinners; }, 6500);
-  if (prev && !prev.event_closed && s.event_closed && r !== "drawer") {
-    openSheet(`<h2>The lucky draw is closed</h2><p class="lead">Alhamdulillah! Both draws are complete. See the winners and the proof of each draw.</p>
-      <div class="stack"><button class="btn" id="seeWinBtn">See winners &amp; proof</button></div>`); const b = $("#seeWinBtn"); if (b) b.onclick = goWinners;
+  if (prev && !prev.event_closed && s.event_closed && r !== "drawer" && !DISPLAY) {
+    openSheet(`<h2>The lucky draw is closed</h2><p class="lead">Alhamdulillah! Both draws are complete. ${MANUAL ? "See the winners." : "See the winners and the proof of each draw."}</p>
+      <div class="stack"><button class="btn" id="seeWinBtn">${MANUAL ? "See the winners" : "See winners &amp; proof"}</button></div>`); const b = $("#seeWinBtn"); if (b) b.onclick = goWinners;
   }
   if (!prev || JSON.stringify(prev.results) !== JSON.stringify(s.results) || prev.event_closed !== s.event_closed) paintWinBox();
   if (r === "owner") {
