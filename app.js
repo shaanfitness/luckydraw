@@ -214,7 +214,7 @@ function viewForm(){
 document.addEventListener("click", (e) => {
   const b = e.target.closest(".seg button");
   if (b) { b.parentElement.querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", x === b)); return; }
-  const c = e.target.closest(".chip");
+  const c = e.target.closest("[data-chips] .chip");   // only the goal chips on the application form
   if (c) { c.setAttribute("aria-pressed", c.getAttribute("aria-pressed") !== "true");
     const box = c.parentElement, pre = box.dataset.chips.replace("goals", "");
     $("#" + pre + "other").classList.toggle("hide", box.querySelector('[data-v="Others"]').getAttribute("aria-pressed") !== "true"); }
@@ -366,6 +366,7 @@ function viewAdmin(fromBack){
     <div class="tabs" role="tablist">
       <button role="tab" data-tab="live" aria-selected="${tab === "live"}">Live</button>
       <button role="tab" data-tab="people" aria-selected="${tab === "people"}">Applicants</button>
+      <button role="tab" data-tab="followup" aria-selected="${tab === "followup"}">Follow-up</button>
       <button role="tab" data-tab="settings" aria-selected="${tab === "settings"}">Settings</button>
     </div>
     <div id="tabBody"></div>`;
@@ -387,6 +388,8 @@ function viewAdmin(fromBack){
         <input type="search" id="q" placeholder="Search name, ID, phone, email or goal" style="margin-top:12px">
         <div class="tbl"><table><thead><tr><th>ID</th><th>Name</th><th>Mobile</th><th>Email</th><th>Goals</th><th>Applied</th></tr></thead><tbody id="rows"></tbody></table></div></div>`;
     paintPeople(); $("#q").oninput = paintRows; $("#csvBtn").onclick = csv;
+  } else if (tab === "followup") {
+    viewFollowup(body);
   } else {
     body.innerHTML = `
       <div class="panel"><h3>${MANUAL ? "Event control" : "Backup draw control"}</h3><p class="muted">${MANUAL ? "Winners are entered on the Live tab. When both are announced, Ram (or you) presses Event Successful." : "Ram Krishna runs the draw from his phone. Use this only if his phone has a problem."}</p><div id="ctrl" style="margin-top:12px"></div></div>

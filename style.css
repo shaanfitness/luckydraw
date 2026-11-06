@@ -292,3 +292,64 @@ body.display .reel .nm{font-size:clamp(26px,3.4vw,40px)}
   body.display .bs-out .reel{padding:16px 12px}
   body.display .bs-out .reel .nm{font-size:clamp(22px,2.6vw,32px)}
 }
+
+/* ---------- Follow-up tab (Sabir only) ---------- */
+.fu-head h3{margin-bottom:4px}
+.fu-funnel{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:12px}
+.fu-f{position:relative;overflow:hidden;border:1px solid var(--line);border-radius:12px;padding:10px 6px;text-align:center;background:#24070b}
+.fu-f b{display:block;font:700 22px var(--sans);color:var(--ivory);font-variant-numeric:tabular-nums}
+.fu-f span{font-size:11px;color:var(--mute)}
+.fu-f i{position:absolute;left:0;bottom:0;height:3px;background:linear-gradient(90deg,#b8913a,#ecd497)}
+.fu-play summary{cursor:pointer;list-style:none}
+.fu-play summary::-webkit-details-marker{display:none}
+.fu-play summary::after{content:" ▾";color:var(--gold)}
+.fu-play[open] summary::after{content:" ▴"}
+.fu-play h4{font:700 12px var(--sans);letter-spacing:.14em;text-transform:uppercase;color:var(--gold);margin:18px 0 8px}
+.fu-order{display:grid;gap:10px;margin-top:12px}
+.fu-order>div{display:flex;gap:10px;align-items:flex-start}
+.fu-order p{margin:0;font-size:13.5px;line-height:1.5;color:var(--text)}
+.fu-rules{margin:0;padding-left:18px;font-size:13.5px;line-height:1.6;color:var(--text)}
+.fu-rules li{margin-bottom:4px}
+.fu-filters{display:flex;gap:6px;overflow-x:auto;padding:2px 0 10px;margin-top:4px;scrollbar-width:none}
+.fu-filters::-webkit-scrollbar{display:none}
+.fu-filters .chip{flex:none}
+#fuQ{margin-bottom:12px}
+.tier{flex:none;font:700 10.5px var(--sans);letter-spacing:.08em;text-transform:uppercase;padding:5px 9px;border-radius:999px;border:1px solid}
+.tier.t0{background:linear-gradient(180deg,#ecd497,#b8913a);color:#1a1405;border-color:transparent}
+.tier.t1{color:#ffb4a8;border-color:#a33a2c;background:#3a0d0f}
+.tier.t2{color:#ecd497;border-color:#7a5f22;background:#2f1a0c}
+.tier.t3{color:var(--mute);border-color:var(--line);background:#24070b}
+.fu-lead{border:1px solid var(--line);border-radius:16px;background:var(--panel);padding:14px;margin-bottom:12px}
+.fu-lead.closed{opacity:.6}
+.fu-lead header{display:flex;gap:10px;align-items:flex-start}
+.fu-lead .rank{flex:none;font:700 13px var(--sans);color:var(--gold2);min-width:30px;padding-top:2px;font-variant-numeric:tabular-nums}
+.fu-lead .fu-who{flex:1;min-width:0}
+.fu-lead .fu-who b{display:block;color:var(--ivory);font-size:16px;line-height:1.3;overflow-wrap:anywhere}
+.fu-lead .fu-who span{display:block;font-size:12px;color:var(--mute)}
+.fu-lead .goals{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 0 40px}
+.fu-lead .goals span{font-size:11.5px;border:1px solid var(--line);border-radius:999px;padding:3px 9px;color:var(--text)}
+.fu-lead .why{font-size:12px;color:var(--mute);margin:8px 0 0 40px;line-height:1.5}
+.fu-lead .flags{margin:8px 0 0 40px;padding:8px 10px 8px 26px;border-radius:10px;background:#3a2a0c;border:1px solid #6b4f16;font-size:12.5px;line-height:1.5;color:#f3e2b3}
+.fu-lead .acts{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.fu-lead .acts .btn{flex:1 1 140px;width:auto}
+.fu-lead .state{display:grid;grid-template-columns:1fr 1fr auto;gap:8px;align-items:end;margin-top:12px}
+.fu-lead .state label span{display:block;font-size:11px;color:var(--mute);margin-bottom:4px}
+.fu-lead .state select,.fu-lead .state input{width:100%;padding:9px 10px;font:13.5px var(--sans);background:#24070b;color:var(--ivory);border:1px solid var(--line);border-radius:10px;color-scheme:dark;min-height:40px}
+.fu-lead .state .calls{font-size:12px;color:var(--mute);padding-bottom:10px;white-space:nowrap}
+.fu-lead .due{color:#ffb4a8;font-weight:700}
+.fu-lead details{margin-top:10px;border-top:1px solid var(--line);padding-top:10px}
+.fu-lead summary{cursor:pointer;font:700 13px var(--sans);color:var(--gold2)}
+.fu-lead .script .sstep{margin-top:12px;text-align:left}
+.fu-lead .script .sstep b{display:block;font:700 11.5px var(--sans);letter-spacing:.1em;text-transform:uppercase;color:var(--gold)}
+.fu-lead .script p,.fu-lead .script li{font-size:14px;line-height:1.55;color:var(--ivory);margin:4px 0}
+.fu-lead .script ul{margin:4px 0;padding-left:18px}
+.fu-lead .script i{color:var(--mute)}
+.fu-lead .script .sstep.note-for p{color:var(--gold2)}
+.fu-lead .msg{margin-top:10px}
+.fu-lead .msg>b{font-size:12px;color:var(--mute);font-weight:600}
+.fu-lead .msg pre{white-space:pre-wrap;font:14px/1.5 var(--sans);color:var(--ivory);background:#1a0507;border:1px solid var(--line);border-radius:10px;padding:10px;margin:6px 0}
+.fu-lead .msg .row{gap:8px}
+.fu-lead .msg .btn{width:auto}
+.fu-lead textarea{width:100%;margin-top:10px;font:14px/1.5 var(--sans);background:#1a0507;color:var(--ivory);border:1px solid var(--line);border-radius:10px;padding:10px;resize:vertical}
+@media (max-width:380px){ .fu-lead .goals,.fu-lead .why,.fu-lead .flags{margin-left:0} .fu-lead .state{grid-template-columns:1fr 1fr} .fu-lead .state .calls{grid-column:1/-1;padding:0} .fu-funnel{grid-template-columns:repeat(2,1fr)} }
+@media (max-width:380px){ .tabs button{font-size:12px;padding:10px 3px;white-space:nowrap} }
