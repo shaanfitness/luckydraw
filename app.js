@@ -702,6 +702,15 @@ function resultsBoard(excludeCat, title = "Winners announced"){
 }
 function paintWinBox(){
   const el = $("#winBox"); if (!el) return;
+  if (st && st.event_closed && MANUAL) {   // after the event: the bowl draw animation reveals the final winners
+    const k = "closed:" + JSON.stringify(allResults().map(r => r.id || r.category));
+    if (el.dataset.k === k) return;          // already showing (don't restart a playing animation)
+    el.dataset.k = k;
+    el.innerHTML = `<div class="panel" style="text-align:center;margin-top:16px;border-color:var(--gold)"><h3>The lucky draw is closed</h3>
+      <p class="muted">Alhamdulillah — both draws are complete. Thank you for being part of it!</p></div><div class="bowlHost"></div>`;
+    return bowlShow($(".bowlHost", el));
+  }
+  el.dataset.k = "";
   const html = resultsBoard(null, st && st.event_closed ? (MANUAL ? "🏆 Final winners" : "🏆 Final winners · Proof of draw") : (MANUAL ? "🏆 Winners" : "🏆 Winners · Proof of draw"));
   el.innerHTML = st && st.event_closed ? `<div class="panel" style="text-align:center;margin-top:16px;border-color:var(--gold)"><h3>The lucky draw is closed</h3>
     <p class="muted">Alhamdulillah — both draws are complete. Applications and draws are locked. Thank you for being part of it!</p></div>${html}` : html;
@@ -727,6 +736,65 @@ function replay(cat){
       o.innerHTML = r.winners.map(w => `<div class="reel win" style="margin-top:10px"><div class="nm">${esc(w.name)}</div><div class="cd">${esc(w.code)}</div></div>`).join(""); }); }, 4300);
 }
 document.addEventListener("click", (e) => { const b = e.target.closest("[data-replay]"); if (b) replay(b.dataset.replay); });
+
+/* ---------------- the bowl draw: animated reveal of the final winners ---------------- */
+// Re-tells the hand draw: chits mix in the bowl, the winning chit rises with a glow and opens to the winner — Couples first, then the Duo.
+let bowlSeen = "";   // results already animated on this page (re-opening the section shows the final view straight away)
+function bowlShow(host){
+  const res = allResults().filter(r => r.winners && r.winners.length);
+  if (!host || !res.length) return;
+  const key = res.map(r => r.id || r.category).join();
+  const day = res[0].at ? new Date(res[0].at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "";
+  host.innerHTML = `<div class="bowlshow">
+      <div class="rule" style="margin:22px 0 4px">🏆 Final winners</div>
+      <div class="bs-jar"></div>
+      <p class="note bs-txt"></p>
+      <div class="bs-out"></div>
+      <div class="bs-ctl"><button class="btn sm ghost bs-skip" type="button">Skip ▸</button><button class="btn sm ghost bs-again hide" type="button">▶ Watch the bowl draw again</button></div>
+      <p class="note bs-cap">Animation of the bowl draw · the winning chits were drawn by hand, live on stage${day ? " · " + esc(day) : ""}</p>
+    </div>`;
+  const q = (x) => $(x, host), jarHost = q(".bs-jar"), txt = q(".bs-txt"), out = q(".bs-out");
+  const winsOf = (r) => r.category === "couple" ? [r.winners[0]] : ["male", "female"].map(g => r.winners.find(w => w.gender === g)).filter(Boolean);
+  const block = (r) => { const Z = P(r.category);
+    const lbl = (w) => r.category === "couple" ? "Couple Edition winner" : `Duo winner · ${w.gender === "male" ? "Male" : "Female"}`;
+    return `<div class="bs-prize"><div class="bs-ptitle">${esc(Z.title)}</div>
+      <div class="reels">${winsOf(r).map(w => `<div class="reel win"><div class="tag">${lbl(w)}</div><div class="nm">${esc(w.name)}</div><div class="cd">${esc(w.code)}</div></div>`).join("")}</div>
+      ${r.at ? `<div class="rec">Drawn by hand from the bowl, live on stage · ${esc(fmtTime(r.at))} · ${esc(r.pool_size)} entries</div>` : ""}</div>`; };
+  const chits = (r) => Math.max(4, Math.min(26, (r && r.pool_size) || 20));
+  let run = 0;   // bumping it cancels an animation that is playing
+  const finish = () => {
+    run++; bowlSeen = key;
+    new Jar(jarHost, 18); txt.textContent = "";
+    out.innerHTML = res.map(block).join("");
+    q(".bs-skip").classList.add("hide"); q(".bs-again").classList.remove("hide");
+  };
+  const wait = (ms, id) => new Promise((ok, no) => setTimeout(() => (id === run && document.body.contains(host)) ? ok() : no(), ms));
+  const play = async () => {
+    const id = ++run; out.innerHTML = "";
+    q(".bs-skip").classList.remove("hide"); q(".bs-again").classList.add("hide");
+    try {
+      for (const r of res) {
+        const Z = P(r.category), jar = new Jar(jarHost, chits(r));
+        txt.textContent = `${Z.title} · ${r.pool_size || ""} ${r.category === "couple" ? "couples" : "singles"} in the bowl`;
+        await wait(1000, id); jar.shuffle(); txt.textContent = "Mixing the chits…";
+        await wait(1900, id); txt.textContent = r.category === "couple" ? "Drawing the winning chit…" : "Drawing the winning chits…";
+        await new Promise((ok) => jar.draw(winsOf(r), ok));
+        if (id !== run || !document.body.contains(host)) return;
+        out.insertAdjacentHTML("beforeend", block(r)); txt.textContent = `🎉 ${Z.short} winner${r.winners.length > 1 ? "s" : ""}!`; confetti();
+        await wait(1800, id);
+      }
+      finish();
+    } catch (_) { /* cancelled (skipped, replayed or left the page) */ }
+  };
+  q(".bs-skip").onclick = finish;
+  q(".bs-again").onclick = () => { jarHost.scrollIntoView({ behavior: "smooth", block: "center" }); play(); };
+  if (bowlSeen === key || (window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches)) return finish();
+  // waits in the bowl until the person scrolls to it, then plays once
+  new Jar(jarHost, 18); txt.textContent = "The winning chits are in the bowl…";
+  if (!("IntersectionObserver" in window)) return play();
+  const io = new IntersectionObserver((en) => { if (en.some(x => x.isIntersecting)) { io.disconnect(); play(); } }, { threshold: .45 });
+  io.observe(jarHost);
+}
 
 /* ---------------- live draw engine (shared) ---------------- */
 const Live = {
@@ -810,7 +878,8 @@ const Live = {
     this.mode = "closed"; this.key = k; this.jar = null;
     this.el.innerHTML = `<div class="panel" style="text-align:center;border-color:var(--gold)">${ORNAMENT}
       <h3 style="margin-top:10px">Event successfully closed</h3>
-      <p class="muted">Alhamdulillah. Both draws are complete — applications and draws are now locked.</p></div>${$("#winBox") ? "" : resultsBoard(null, "Final winners")}`;
+      <p class="muted">Alhamdulillah. Both draws are complete — applications and draws are now locked.</p></div>${$("#winBox") ? "" : MANUAL ? `<div class="bowlHost"></div>` : resultsBoard(null, "Final winners")}`;
+    if (MANUAL && !$("#winBox")) bowlShow($(".bowlHost", this.el));
   },
   update(s){
     if (!this.alive()) return;

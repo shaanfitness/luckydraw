@@ -211,7 +211,7 @@ footer{padding-bottom:calc(20px + env(safe-area-inset-bottom))}
 .eye{position:absolute;right:6px;top:50%;transform:translateY(-50%);width:38px;height:38px;border:0;background:none;color:var(--gold2);cursor:pointer;display:grid;place-items:center;border-radius:8px}
 .board .nm{font-family:var(--display);color:var(--ivory);font-size:18px}
 
-.rec{font-size:11.5px;color:var(--mute);margin-top:10px;line-height:1.6;word-break:break-all}
+.rec{font-size:11.5px;color:var(--mute);margin-top:10px;line-height:1.6;overflow-wrap:anywhere}
 .alert-on{margin-top:10px;font-size:13px;color:#7fe0a0;text-align:center}
 .alertp{margin-top:12px;font-size:14px;line-height:1.5}
 .pill.gold{background:#5a4512;color:var(--gold2)}
@@ -267,3 +267,28 @@ body.display .reels{grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
 body.display .reel .nm{font-size:clamp(26px,3.4vw,40px)}
 @media (min-width:1500px) and (min-height:1000px){ body.display .wrap{zoom:1.5} }
 @media (min-width:2400px) and (min-height:1400px){ body.display .wrap{zoom:2} }
+
+/* ---------- the bowl draw (final winners animation) ---------- */
+.bowlshow{text-align:center}
+.bs-txt{color:var(--gold2);font-size:14px;min-height:21px;margin-top:4px}
+.bs-prize{margin-top:16px;animation:bsin .7s cubic-bezier(.2,.8,.2,1)}
+@keyframes bsin{from{opacity:0;transform:translateY(14px) scale(.98)}}
+.bs-ptitle{font:700 11px var(--sans);letter-spacing:.24em;text-transform:uppercase;color:var(--gold);margin-bottom:-6px}
+.bs-prize .rec{margin-top:10px}
+.bs-ctl{display:flex;justify-content:center;gap:8px;margin-top:14px}
+.bs-ctl .btn{width:auto}
+.bs-cap{opacity:.75;font-size:12px;margin-top:10px}
+@media (prefers-reduced-motion: reduce){ .bs-prize{animation:none} }
+
+/* big screen: bowl on the left, winners on the right — the whole reveal fits one landscape screen */
+@media (min-width:900px){
+  body.display .bowlshow{display:grid;grid-template-columns:300px 1fr;column-gap:30px;align-items:start}
+  body.display .bowlshow>.rule,body.display .bowlshow>.bs-ctl,body.display .bowlshow>.bs-cap{grid-column:1/-1}
+  body.display .bs-jar{grid-column:1;grid-row:2}
+  body.display .bs-txt{grid-column:1;grid-row:3}
+  body.display .bs-out{grid-column:2;grid-row:2/span 2;align-self:center}
+  body.display .bs-out .bs-prize:first-child{margin-top:0}
+  body.display .bs-out .reels{grid-template-columns:repeat(auto-fit,minmax(210px,1fr));margin-top:14px}
+  body.display .bs-out .reel{padding:16px 12px}
+  body.display .bs-out .reel .nm{font-size:clamp(22px,2.6vw,32px)}
+}
